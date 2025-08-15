@@ -48,174 +48,57 @@ export default function Tabs({ username, displayName }) {
       const html = await res.text()
       const doc = new DOMParser().parseFromString(html, 'text/html')
       
-      const realTabs = []
+      const availableTabs = []
       
-      // Look specifically for clickable tab navigation elements
-      // Check for actual tab URLs in links
-      if (doc.querySelector('a[href*="tab=Spotlight"]')) {
-        realTabs.push('spotlight')
+      // Check for actual tab navigation elements in the UI (this matches real Snapchat behavior)
+      // Look for tab buttons in the navigation
+      const tabElements = doc.querySelectorAll('button[role="tab"], [role="tablist"] button, button[aria-selected]')
+      
+      for (const tabElement of tabElements) {
+        const tabText = tabElement.textContent?.trim().toLowerCase()
+        if (tabText === 'spotlight') availableTabs.push('spotlight')
+        else if (tabText === 'lenses') availableTabs.push('lenses')
+        else if (tabText === 'tagged') availableTabs.push('tagged')
+        else if (tabText === 'related') availableTabs.push('related')
       }
       
-      if (doc.querySelector('a[href*="tab=Lenses"]')) {
-        realTabs.push('lenses')
+      // Fallback: if no tab navigation found, look for tab-specific content
+      if (availableTabs.length === 0) {
+        console.log('No tab navigation found, falling back to content detection')
+        if (await hasContentForTab('spotlight')) availableTabs.push('spotlight')
+        if (await hasContentForTab('lenses')) availableTabs.push('lenses') 
+        if (await hasContentForTab('tagged')) availableTabs.push('tagged')
+        if (await hasContentForTab('related')) availableTabs.push('related')
       }
       
-      if (doc.querySelector('a[href*="tab=Tagged"]')) {
-        realTabs.push('tagged') 
-      }
-      
-      if (doc.querySelector('a[href*="tab=Related"]')) {
-        realTabs.push('related')
-      }
-      
-      // If no tab URLs found, look for navigation-like elements more carefully
-      if (realTabs.length === 0) {
-        // Look for elements that look like tab navigation (not just content)
-        const navElements = [...doc.querySelectorAll('nav *, [role="navigation"] *')]
-        
-        const hasSpotlightNav = navElements.some(el => 
-          el.textContent?.trim() === 'Spotlight' && el.tagName?.match(/^(BUTTON|A)$/))
-        const hasLensesNav = navElements.some(el => 
-          el.textContent?.trim() === 'Lenses' && el.tagName?.match(/^(BUTTON|A)$/))
-        const hasTaggedNav = navElements.some(el => 
-          el.textContent?.trim() === 'Tagged' && el.tagName?.match(/^(BUTTON|A)$/))
-        const hasRelatedNav = navElements.some(el => 
-          el.textContent?.trim() === 'Related' && el.tagName?.match(/^(BUTTON|A)$/))
-          
-        if (hasSpotlightNav) realTabs.push('spotlight')
-        if (hasLensesNav) realTabs.push('lenses')  
-        if (hasTaggedNav) realTabs.push('tagged')
-        if (hasRelatedNav) realTabs.push('related')
-      }
-      
-      console.log(`Real tabs found for ${username}:`, realTabs)
-      return realTabs.length > 0 ? realTabs : ['tagged', 'related'] // Fallback to most common tabs
-      
+      console.log(`Real tabs found for ${username}:`, availableTabs)
+      return availableTabs
     } catch (error) {
       console.error('Error parsing real tabs:', error)
-      // Conservative fallback - most profiles have at least these
-      return ['tagged', 'related']
+      return []
     }
   }
 
-  async function checkTabHasContent(tab) {
+  async function hasContentForTab(tab) {
     try {
-      // Use the exact same logic as fetchTabContent but just check if we get valid items
-      let url, selector, dataMapper
+      let url, selector
       
       switch (tab) {
         case 'spotlight':
           url = `/snap/@${username}?locale=en-US&tab=Spotlight`
-          selector = 'a[href*="/spotlight/"]'
-          dataMapper = (tile) => {
-            const linkText = tile.textContent?.trim() || ''
-            const numbers = linkText.match(/\d+[kK]?/g) || []
-            const [views, comments, shares] = numbers.slice(0, 3)
-            
-            return {
-              thumbnail: tile.querySelector('img')?.src,
-              user: tile.href?.match(/@([^/]+)/)?.[1] || 'Unknown',
-              description: linkText.replace(/\d+[kK]?\s*/g, '').trim() || 'Spotlight video',
-              views: views || '0',
-              comments: comments || '0', 
-              shares: shares || '0'
-            }
-          }
+          selector = 'a[href*="/spotlight/"] img'
           break
         case 'lenses':
           url = `/snap/@${username}?locale=en-US&tab=Lenses`
-          selector = 'a[href*="/unlock/"]'
-          dataMapper = (tile) => ({
-            thumbnail: tile.querySelector('img')?.src,
-            user: username,
-            description: tile.querySelector('p')?.textContent || 'Lens'
-          })
+          selector = 'a[href*="/unlock/"] img'
           break
         case 'tagged':
           url = `/snap/@${username}?locale=en-US&tab=Tagged`
-          selector = 'a[href*="/spotlight/"], script[type="application/ld+json"]'
-          dataMapper = (element) => {
-            // Same logic as in fetchTabContent
-            if (element.tagName === 'SCRIPT') {
-              try {
-                const data = JSON.parse(element.textContent)
-                if (data['@type'] === 'VideoObject' && data.keywords && data.keywords.includes('#' + username.replace(/\d+$/, ''))) {
-                  const creatorName = data.creator?.alternateName || 'Unknown'
-                  return {
-                    thumbnail: data.thumbnailUrl,
-                    user: creatorName,
-                    description: data.name || data.description || 'Tagged content',
-                    views: '0',
-                    comments: '0',
-                    shares: '0'
-                  }
-                }
-                return null
-              } catch (e) {
-                return null
-              }
-            }
-            
-            const linkText = element.textContent?.trim() || ''
-            const numbers = linkText.match(/\d+[kK]?/g) || []
-            const userName = element.href?.match(/@([^/]+)/)?.[1] || 'Unknown'
-            
-            let description = 'Tagged content'
-            let container = element.closest('div')
-            for (let i = 0; i < 3 && container; i++) {
-              const paragraphs = container.querySelectorAll('p')
-              for (const p of paragraphs) {
-                const text = p.textContent?.trim()
-                if (text && (text.includes('#') || text.length > 20)) {
-                  description = text
-                  break
-                }
-              }
-              if (description !== 'Tagged content') break
-              container = container.parentElement
-            }
-            
-            return {
-              thumbnail: element.querySelector('img')?.src,
-              user: userName,
-              description: description,
-              views: numbers[0] || '0',
-              comments: numbers[1] || '0',
-              shares: numbers[2] || '0'
-            }
-          }
+          selector = 'a[href*="/spotlight/"] img'
           break
         case 'related':
           url = `/snap/@${username}?locale=en-US`
-          selector = 'a[href*="/add/"]'
-          dataMapper = (element) => {
-            const addLink = element.href
-            const usernameMatch = addLink.match(/\/add\/([^?]+)/)
-            if (!usernameMatch) return null
-            
-            const relatedUsername = usernameMatch[1]
-            const nameElement = element.querySelector('h5')
-            const imageElement = element.querySelector('img')
-            const paragraphElement = element.querySelector('p')
-            
-            if (!nameElement) return null
-            
-            let thumbnailUrl = null
-            if (imageElement) {
-              thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
-            }
-            
-            if (!thumbnailUrl) {
-              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt/default-profile-${relatedUsername}.webp`
-            }
-            
-            return {
-              thumbnail: thumbnailUrl,
-              user: nameElement.textContent.trim(),
-              description: paragraphElement ? paragraphElement.textContent.trim() : `@${relatedUsername}`,
-              isProfile: true
-            }
-          }
+          selector = 'a[href*="/add/"] h5'
           break
         default:
           return false
@@ -224,23 +107,48 @@ export default function Tabs({ username, displayName }) {
       const res = await fetch(url)
       const html = await res.text()
       const doc = new DOMParser().parseFromString(html, 'text/html')
-      const elements = [...doc.querySelectorAll(selector)]
+      const elements = doc.querySelectorAll(selector)
       
-      let data = elements.map(dataMapper).filter(item => item && item.thumbnail)
+      return elements.length > 0
+    } catch (error) {
+      return false
+    }
+  }
+
+  async function checkTabHasContent(tab) {
+    try {
+      // Simple selector-based check for content existence
+      // Since parseTabsFromRealPage already confirmed the tab exists,
+      // we just need to verify it has actual content items
+      let url, selector
       
-      // Apply the same filtering as in fetchTabContent
-      if (tab === 'tagged') {
-        data = data.filter(item => item.user !== username)
-        const seen = new Set()
-        data = data.filter(item => {
-          const key = `${item.user}:${item.description}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
+      switch (tab) {
+        case 'spotlight':
+          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
+          selector = 'a[href*="/spotlight/"] img'
+          break
+        case 'lenses':
+          url = `/snap/@${username}?locale=en-US&tab=Lenses`
+          selector = 'a[href*="/unlock/"] img'
+          break
+        case 'tagged':
+          url = `/snap/@${username}?locale=en-US&tab=Tagged`
+          selector = 'a[href*="/spotlight/"] img, script[type="application/ld+json"]'
+          break
+        case 'related':
+          url = `/snap/@${username}?locale=en-US`
+          selector = 'a[href*="/add/"] h5'
+          break
+        default:
+          return false
       }
+
+      const res = await fetch(url)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const elements = doc.querySelectorAll(selector)
       
-      return data.length > 0
+      return elements.length > 0
     } catch (error) {
       console.error(`Error checking content for ${tab}:`, error)
       return false
@@ -260,13 +168,16 @@ export default function Tabs({ username, displayName }) {
             const numbers = linkText.match(/\d+[kK]?/g) || []
             const [views, comments, shares] = numbers.slice(0, 3)
             
+            const user = tile.href?.match(/@([^/]+)/)?.[1]
+            const description = linkText.replace(/\d+[kK]?\s*/g, '').trim()
+            
             return {
               thumbnail: tile.querySelector('img')?.src,
-              user: tile.href?.match(/@([^/]+)/)?.[1] || 'Unknown',
-              description: linkText.replace(/\d+[kK]?\s*/g, '').trim() || 'Spotlight video',
-              views: views || '0',
-              comments: comments || '0', 
-              shares: shares || '0'
+              user: user,
+              description: description,
+              views: views,
+              comments: comments, 
+              shares: shares
             }
           }
           break
@@ -276,7 +187,7 @@ export default function Tabs({ username, displayName }) {
           dataMapper = (tile) => ({
             thumbnail: tile.querySelector('img')?.src,
             user: username, // Lenses are created by the profile owner
-            description: tile.querySelector('p')?.textContent || 'Lens'
+            description: tile.querySelector('p')?.textContent
           })
           break
         case 'tagged':
@@ -289,14 +200,16 @@ export default function Tabs({ username, displayName }) {
               try {
                 const data = JSON.parse(element.textContent)
                 if (data['@type'] === 'VideoObject' && data.keywords && data.keywords.includes('#' + username.replace(/\d+$/, ''))) {
-                  const creatorName = data.creator?.alternateName || 'Unknown'
+                  const creatorName = data.creator?.alternateName
+                  const description = data.name || data.description
+                  
                   return {
                     thumbnail: data.thumbnailUrl,
                     user: creatorName,
-                    description: data.name || data.description || 'Tagged content',
-                    views: '0', // JSON-LD doesn't always have view counts
-                    comments: '0',
-                    shares: '0'
+                    description: description,
+                    views: null, // JSON-LD doesn't always have view counts
+                    comments: null,
+                    shares: null
                   }
                 }
                 return null
@@ -308,10 +221,10 @@ export default function Tabs({ username, displayName }) {
             // Fallback to regular link parsing with improved description extraction
             const linkText = element.textContent?.trim() || ''
             const numbers = linkText.match(/\d+[kK]?/g) || []
-            const userName = element.href?.match(/@([^/]+)/)?.[1] || 'Unknown'
+            const userName = element.href?.match(/@([^/]+)/)?.[1]
             
             // Look for description with hashtags in nearby elements
-            let description = 'Tagged content'
+            let description = null
             
             // Check parent containers for hashtag descriptions
             let container = element.closest('div')
@@ -324,7 +237,7 @@ export default function Tabs({ username, displayName }) {
                   break
                 }
               }
-              if (description !== 'Tagged content') break
+              if (description) break
               container = container.parentElement
             }
             
@@ -332,9 +245,9 @@ export default function Tabs({ username, displayName }) {
               thumbnail: element.querySelector('img')?.src,
               user: userName,
               description: description,
-              views: numbers[0] || '0',
-              comments: numbers[1] || '0',
-              shares: numbers[2] || '0'
+              views: numbers[0],
+              comments: numbers[1],
+              shares: numbers[2]
             }
           }
           break
@@ -370,15 +283,10 @@ export default function Tabs({ username, displayName }) {
               thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
             }
             
-            // If no image found, use fallback URL pattern based on username
-            if (!thumbnailUrl) {
-              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt/default-profile-${relatedUsername}.webp`
-            }
-            
             return {
               thumbnail: thumbnailUrl,
               user: nameElement.textContent.trim(),
-              description: paragraphElement ? paragraphElement.textContent.trim() : `@${relatedUsername}`,
+              description: paragraphElement?.textContent.trim(),
               isProfile: true
             }
           }
@@ -401,7 +309,17 @@ export default function Tabs({ username, displayName }) {
         })
       }
       
-      let data = elements.map(dataMapper).filter(item => item && item.thumbnail)
+      let data = elements.map(dataMapper).filter(item => {
+        if (!item || !item.thumbnail) return false
+        
+        // For profile tiles (Related tab), require user name
+        if (item.isProfile && !item.user) return false
+        
+        // For content tiles, require user name 
+        if (!item.isProfile && !item.user) return false
+        
+        return true
+      })
       
       // For Tagged tab, filter out entries that are from the profile owner to show diverse users
       if (tab === 'tagged') {
@@ -416,22 +334,6 @@ export default function Tabs({ username, displayName }) {
         })
       }
       
-      // For Related tab, add fallback profiles if dynamic parsing failed
-      if (tab === 'related' && data.length === 0) {
-        console.log('Related tab: No dynamic profiles found, using fallback')
-        const fallbackProfiles = [
-          { name: 'Jordyn Jones', username: 'jordynjones11', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdlRVMVdUMWh5YkRWc2IxcExlamhNUlZVMVUyRTFQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNcG5n._RS84,84_FMwebp' },
-          { name: 'Baby Ariel', username: 'babyariel', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdmNHVnlVV1pRZUZWMVkyRnNNVUkwU1dFemJITldQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNanBlZw._RS84,84_FMwebp' },
-          { name: 'Alissa Violet', username: 'alissaviolet', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdlVubFFNVE5CVUZKQ1RrMVVlR2RqTTJORVNXeEtQMkp2UFVWbmEzbEJVVkpKUVd4QldsbEJSU1V6UkNaMVl6MHlOUS5fUlMwLDY0MF9GTWpwZWc._RS84,84_FMwebp' }
-        ]
-        
-        data = fallbackProfiles.map(profile => ({
-          thumbnail: profile.image,
-          user: profile.name,
-          description: `@${profile.username}`,
-          isProfile: true
-        }))
-      }
       
       setItems(data)
     } catch (error) {
@@ -447,7 +349,7 @@ export default function Tabs({ username, displayName }) {
       tagged: 'Tagged content',
       related: 'Related content'
     }
-    return tabTitles[tab] || 'Content'
+    return tabTitles[tab]
   }
 
   return (
