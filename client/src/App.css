@@ -1,0 +1,118 @@
+#root {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: system-ui, sans-serif;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+.header .login-field {
+  display: flex;
+  flex-direction: column;
+  max-width: 300px;
+  margin: 1rem auto;
+}
+.header .login-field input {
+  padding: 0.5rem;
+}
+.header .download {
+  margin-top: 0.5rem;
+}
+
+.profile {
+  text-align: center;
+}
+.profile img.avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+}
+.profile .subs {
+  color: #666;
+}
+
+.tabs {
+  margin-top: 2rem;
+}
+.tab-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.tab-nav button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #eee;
+  cursor: pointer;
+}
+.tab-nav button.active {
+  background: #ffd300;
+}
+
+.spotlight-grid,
+.stories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.spotlight-item,
+.story-item {
+  text-align: center;
+}
+.spotlight-item img,
+.story-item img {
+  width: 100%;
+  border-radius: 8px;
+}
+.spotlight-user,
+.story-title {
+  font-weight: 600;
+}
+.spotlight-desc,
+.story-desc {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.footer {
+  margin-top: 2rem;
+  padding: 2rem 0;
+  background: #f5f5f5;
+}
+.footer-columns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+}
+.footer-columns h4 {
+  margin-bottom: 0.5rem;
+}
+.footer-columns ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.footer-columns li {
+  margin: 0.25rem 0;
+}
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ddd;
+}
+.footer-bottom .legal-links a {
+  margin-left: 1rem;
+}
+
+.placeholder {
+  margin-top: 1rem;
+  color: #666;
+}
