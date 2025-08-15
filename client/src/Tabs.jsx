@@ -277,10 +277,16 @@ export default function Tabs({ username, displayName }) {
             
             if (!nameElement) return null
             
-            // Get thumbnail URL - try multiple sources
+            // Get thumbnail URL - try multiple sources and fallback to Snapchat standard URL
             let thumbnailUrl = null
             if (imageElement) {
               thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
+            }
+            
+            // If no image found, generate fallback using Snapchat's Bitmoji/avatar service
+            if (!thumbnailUrl || thumbnailUrl === '') {
+              // Use Snapchat's web capture API for profile previews (similar to og:image)
+              thumbnailUrl = `https://us-east1-aws.api.snapchat.com/web-capture/www.snapchat.com/add/${relatedUsername}/preview/square.jpeg?xp_id=1`
             }
             
             return {
