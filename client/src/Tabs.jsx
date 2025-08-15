@@ -9,7 +9,7 @@ const LoadingSpinner = ({ tabType }) => (
   </div>
 )
 
-export default function Tabs({ username }) {
+export default function Tabs({ username, displayName }) {
   const [items, setItems] = useState([])
   const [activeTab, setActiveTab] = useState('stories') // Default to stories first like real Snapchat
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
@@ -329,7 +329,6 @@ export default function Tabs({ username }) {
     fetchTabContentCallback(activeTab)
   }, [username, activeTab, availableTabs, fetchTabContentCallback])
 
-
   async function parseTabsFromRealPage() {
     try {
       const res = await fetch(`/snap/@${username}?locale=en-US`)
@@ -468,7 +467,6 @@ export default function Tabs({ username }) {
       return false
     }
   }
-
 
   const getTabTitle = (tab) => {
     const tabTitles = {
