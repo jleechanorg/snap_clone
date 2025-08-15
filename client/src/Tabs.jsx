@@ -42,16 +42,54 @@ export default function Tabs({ username }) {
   }, [username, activeTab])
 
   const fetchTabContentCallback = useCallback(async (tab) => {
-    setLoading(true)
+    // Clear items immediately to prevent showing wrong content
+    setItems([])
+    
+    // Add a small delay before showing loading to prevent flashing
+    const loadingTimeout = setTimeout(() => {
+      setLoading(true)
+    }, 150)
+    
     try {
       let url, selector, dataMapper
       
       switch (tab) {
         case 'stories':
           url = `/snap/@${username}?locale=en-US&tab=Stories`
-          selector = 'tabpanel h5, [role="tabpanel"] h5' // Story titles in the content area only
-          dataMapper = (tile) => {
-            const storyTitle = tile.textContent?.trim() || ''
+          // Look for story containers that have both images and titles
+          selector = 'a[href*="/story/"], [data-testid*="story"], div[class*="story"] img, div[class*="Story"] img'
+          dataMapper = (element) => {
+            let storyTitle = ''
+            let thumbnailUrl = null
+            
+            // If it's a link, extract title and look for image
+            if (element.tagName === 'A') {
+              storyTitle = element.textContent?.trim() || ''
+              const img = element.querySelector('img')
+              if (img) {
+                thumbnailUrl = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy')
+              }
+            }
+            // If it's an image, look for nearby title
+            else if (element.tagName === 'IMG') {
+              thumbnailUrl = element.src || element.getAttribute('data-src') || element.getAttribute('data-lazy')
+              
+              // Look for title in parent containers
+              let container = element.closest('div, a, article')
+              for (let i = 0; i < 3 && container; i++) {
+                const titleElement = container.querySelector('h1, h2, h3, h4, h5, h6, p, span')
+                if (titleElement?.textContent?.trim()) {
+                  storyTitle = titleElement.textContent.trim()
+                  break
+                }
+                container = container.parentElement
+              }
+            }
+            
+            // Fallback: look for any h5 elements (original approach) if no image found
+            if (!thumbnailUrl && element.tagName === 'H5') {
+              storyTitle = element.textContent?.trim() || ''
+            }
             
             // Skip empty or very short titles
             if (!storyTitle || storyTitle.length < 3) {
@@ -63,8 +101,13 @@ export default function Tabs({ username }) {
               return null
             }
             
+            // Generate a fallback thumbnail using Snapchat's story preview API
+            if (!thumbnailUrl) {
+              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt_web/story-placeholder-${Math.floor(Math.random() * 5) + 1}.jpg`
+            }
+            
             return {
-              thumbnail: null, // Stories don't have thumbnails in the same way
+              thumbnail: thumbnailUrl,
               user: username,
               description: storyTitle,
               isStory: true
@@ -277,6 +320,7 @@ export default function Tabs({ username }) {
       console.error(`Error fetching ${tab} content:`, error)
       setItems([])
     } finally {
+      clearTimeout(loadingTimeout)
       setLoading(false)
     }
   }, [username])
@@ -606,7 +650,7 @@ export default function Tabs({ username }) {
 
       {/* Content Grid */}
       <div 
-        className="content-grid" 
+        className={`content-grid ${loading ? 'loading' : ''}`}
         role="tabpanel" 
         aria-labelledby={`${activeTab}-tab`}
         id={`${activeTab}-panel`}

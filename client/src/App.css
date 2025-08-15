@@ -404,6 +404,12 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.5rem;
+  opacity: 1;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.content-grid.loading {
+  opacity: 0.6;
 }
 
 .content-tile {
