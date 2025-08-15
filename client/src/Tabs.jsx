@@ -42,13 +42,8 @@ export default function Tabs({ username }) {
   }, [username, activeTab])
 
   const fetchTabContentCallback = useCallback(async (tab) => {
-    // Clear items immediately to prevent showing wrong content
-    setItems([])
-    
-    // Add a small delay before showing loading to prevent flashing
-    const loadingTimeout = setTimeout(() => {
-      setLoading(true)
-    }, 150)
+    // Start loading immediately but keep existing content visible
+    setLoading(true)
     
     try {
       let url, selector, dataMapper
@@ -320,7 +315,6 @@ export default function Tabs({ username }) {
       console.error(`Error fetching ${tab} content:`, error)
       setItems([])
     } finally {
-      clearTimeout(loadingTimeout)
       setLoading(false)
     }
   }, [username])
@@ -655,13 +649,12 @@ export default function Tabs({ username }) {
         aria-labelledby={`${activeTab}-tab`}
         id={`${activeTab}-panel`}
       >
-        {loading && <LoadingSpinner tabType={getTabTitle(activeTab)} />}
         {!loading && items.length === 0 && (
           <div className="empty-message" role="status" aria-live="polite" aria-atomic="true">
             No {getTabTitle(activeTab).toLowerCase()} available for this profile.
           </div>
         )}
-        {!loading && items.map((item, index) => (
+        {items.map((item, index) => (
           <article key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''} ${item.isStory ? 'story-tile' : ''}`} tabIndex="0" role="button" aria-label={item.isProfile ? `View profile of ${item.user}` : item.isStory ? `View story: ${item.description}` : `View content by ${item.user}`}>
             {item.thumbnail && (
               <OptimizedImage
