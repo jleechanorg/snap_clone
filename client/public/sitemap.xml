@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  
+  <!-- Homepage -->
+  <url>
+    <loc>https://snapchat-clone.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <lastmod>2025-08-15</lastmod>
+  </url>
+  
+  <!-- Popular Profile Examples -->
+  <url>
+    <loc>https://snapchat-clone.com/?username=moonlightbae</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2025-08-15</lastmod>
+  </url>
+  
+  <!-- Example profiles for demonstration -->
+  <url>
+    <loc>https://snapchat-clone.com/?username=example1</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2025-08-15</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://snapchat-clone.com/?username=example2</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+    <lastmod>2025-08-15</lastmod>
+  </url>
+  
+</urlset>

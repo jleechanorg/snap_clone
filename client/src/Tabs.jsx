@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
-import Spotlight from './Spotlight'
-import Stories from './Stories'
+import { useEffect, useState, useRef, lazy, Suspense } from 'react'
 import './App.css'
+
+// Lazy load components
+const Spotlight = lazy(() => import('./Spotlight'))
+const Stories = lazy(() => import('./Stories'))
 
 export default function Tabs({ username, displayName }) {
   const [items, setItems] = useState([])
   const [activeTab, setActiveTab] = useState('spotlight')
   const [availableTabs, setAvailableTabs] = useState(new Set(['spotlight', 'lenses', 'tagged', 'related']))
+  const [loading, setLoading] = useState(false)
+  const tabRefs = useRef({})
 
   useEffect(() => {
     if (!username) return
@@ -156,6 +160,7 @@ export default function Tabs({ username, displayName }) {
   }
 
   async function fetchTabContent(tab) {
+    setLoading(true)
     try {
       let url, selector, dataMapper
       
@@ -349,6 +354,8 @@ export default function Tabs({ username, displayName }) {
     } catch (error) {
       console.error(`Error fetching ${tab} content:`, error)
       setItems([])
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -362,38 +369,100 @@ export default function Tabs({ username, displayName }) {
     return tabTitles[tab]
   }
 
+  const handleTabKeyDown = (event, tab) => {
+    const availableTabsArray = Array.from(availableTabs)
+    const currentIndex = availableTabsArray.indexOf(tab)
+    
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault()
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : availableTabsArray.length - 1
+        const prevTab = availableTabsArray[prevIndex]
+        setActiveTab(prevTab)
+        tabRefs.current[prevTab]?.focus()
+        break
+      case 'ArrowRight':
+        event.preventDefault()
+        const nextIndex = currentIndex < availableTabsArray.length - 1 ? currentIndex + 1 : 0
+        const nextTab = availableTabsArray[nextIndex]
+        setActiveTab(nextTab)
+        tabRefs.current[nextTab]?.focus()
+        break
+      case 'Home':
+        event.preventDefault()
+        const firstTab = availableTabsArray[0]
+        setActiveTab(firstTab)
+        tabRefs.current[firstTab]?.focus()
+        break
+      case 'End':
+        event.preventDefault()
+        const lastTab = availableTabsArray[availableTabsArray.length - 1]
+        setActiveTab(lastTab)
+        tabRefs.current[lastTab]?.focus()
+        break
+    }
+  }
+
   return (
     <div className="spotlight-content">
       {/* Tab Navigation */}
-      <div className="tab-navigation">
+      <div className="tab-navigation" role="tablist" aria-label="Profile content tabs">
         {availableTabs.has('spotlight') && (
           <button 
+            ref={el => tabRefs.current['spotlight'] = el}
             className={`tab-button ${activeTab === 'spotlight' ? 'active' : ''}`}
             onClick={() => setActiveTab('spotlight')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'spotlight')}
+            role="tab"
+            aria-selected={activeTab === 'spotlight'}
+            aria-controls="spotlight-panel"
+            id="spotlight-tab"
+            tabIndex={activeTab === 'spotlight' ? 0 : -1}
           >
             Spotlight
           </button>
         )}
         {availableTabs.has('lenses') && (
           <button 
+            ref={el => tabRefs.current['lenses'] = el}
             className={`tab-button ${activeTab === 'lenses' ? 'active' : ''}`}
             onClick={() => setActiveTab('lenses')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'lenses')}
+            role="tab"
+            aria-selected={activeTab === 'lenses'}
+            aria-controls="lenses-panel"
+            id="lenses-tab"
+            tabIndex={activeTab === 'lenses' ? 0 : -1}
           >
             Lenses
           </button>
         )}
         {availableTabs.has('tagged') && (
           <button 
+            ref={el => tabRefs.current['tagged'] = el}
             className={`tab-button ${activeTab === 'tagged' ? 'active' : ''}`}
             onClick={() => setActiveTab('tagged')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'tagged')}
+            role="tab"
+            aria-selected={activeTab === 'tagged'}
+            aria-controls="tagged-panel"
+            id="tagged-tab"
+            tabIndex={activeTab === 'tagged' ? 0 : -1}
           >
             Tagged
           </button>
         )}
         {availableTabs.has('related') && (
           <button 
+            ref={el => tabRefs.current['related'] = el}
             className={`tab-button ${activeTab === 'related' ? 'active' : ''}`}
             onClick={() => setActiveTab('related')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'related')}
+            role="tab"
+            aria-selected={activeTab === 'related'}
+            aria-controls="related-panel"
+            id="related-tab"
+            tabIndex={activeTab === 'related' ? 0 : -1}
           >
             Related
           </button>
@@ -402,52 +471,80 @@ export default function Tabs({ username, displayName }) {
 
       {/* Sort Filter */}
       <div className="sort-filter">
-        <span className="sort-label">Sort by:</span>
-        <button className="sort-button">
+        <span className="sort-label" id="sort-label">Sort by:</span>
+        <button className="sort-button" aria-labelledby="sort-label" aria-expanded="false">
           <span>Recent</span>
-          <span className="sort-arrow">▼</span>
+          <span className="sort-arrow" aria-hidden="true">▼</span>
         </button>
       </div>
       
-      <div className="content-grid">
-        {items.map((item, index) => (
-          <div key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''}`}>
-            {item.thumbnail && (
-              <img src={item.thumbnail} alt="" className={item.isProfile ? "profile-image" : "tile-image"} />
-            )}
-            <div className="tile-content">
-              {item.user && (
-                <div className="tile-user">{item.user}</div>
-              )}
-              {item.description && (
-                <div className="tile-description">{item.description}</div>
-              )}
-              {!item.isProfile && (
-                <div className="tile-stats">
-                  {item.views && (
-                    <span className="stat-item">
-                      <span>❤️</span>
-                      <span>{item.views}</span>
-                    </span>
-                  )}
-                  {item.comments && (
-                    <span className="stat-item">
-                      <span>💬</span>
-                      <span>{item.comments}</span>
-                    </span>
-                  )}
-                  {item.shares && (
-                    <span className="stat-item">
-                      <span>🔗</span>
-                      <span>{item.shares}</span>
-                    </span>
-                  )}
-                </div>
-              )}
+      <Suspense fallback={<div className="loading-spinner" role="status" aria-live="polite">Loading content...</div>}>
+        <div 
+          className="content-grid"
+          role="tabpanel"
+          id={`${activeTab}-panel`}
+          aria-labelledby={`${activeTab}-tab`}
+          aria-live="polite"
+          aria-busy={loading}
+        >
+          {loading && (
+            <div className="loading-message" role="status" aria-live="polite">
+              Loading {getTabTitle(activeTab).toLowerCase()}...
             </div>
-          </div>
-        ))}
-      </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="empty-message" role="status">
+              No {getTabTitle(activeTab).toLowerCase()} available.
+            </div>
+          )}
+          {!loading && items.map((item, index) => (
+            <article key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''}`}>
+              {item.thumbnail && (
+                <img 
+                  src={item.thumbnail} 
+                  alt={item.isProfile 
+                    ? `${item.user}'s profile picture` 
+                    : `Thumbnail for ${item.description || 'content'} by ${item.user}`
+                  } 
+                  className={item.isProfile ? "profile-image" : "tile-image"} 
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
+              <div className="tile-content">
+                {item.user && (
+                  <h3 className="tile-user">{item.user}</h3>
+                )}
+                {item.description && (
+                  <p className="tile-description">{item.description}</p>
+                )}
+                {!item.isProfile && (
+                  <div className="tile-stats" aria-label="Content statistics">
+                    {item.views && (
+                      <span className="stat-item">
+                        <span role="img" aria-label="views" aria-hidden="true">❤️</span>
+                        <span aria-label={`${item.views} views`}>{item.views}</span>
+                      </span>
+                    )}
+                    {item.comments && (
+                      <span className="stat-item">
+                        <span role="img" aria-label="comments" aria-hidden="true">💬</span>
+                        <span aria-label={`${item.comments} comments`}>{item.comments}</span>
+                      </span>
+                    )}
+                    {item.shares && (
+                      <span className="stat-item">
+                        <span role="img" aria-label="shares" aria-hidden="true">🔗</span>
+                        <span aria-label={`${item.shares} shares`}>{item.shares}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      </Suspense>
     </div>
   )
 }

@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import Tabs from './Tabs'
+import { 
+  updateMetaTags, 
+  generateProfileStructuredData, 
+  injectStructuredData,
+  generateProfileTitle,
+  generateProfileDescription,
+  setupSEOErrorTracking
+} from './utils/seo'
 
 function App() {
   const params = new URLSearchParams(window.location.search)
@@ -9,6 +17,11 @@ function App() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    // Setup SEO error tracking on component mount
+    setupSEOErrorTracking()
+  }, [])
 
   useEffect(() => {
     if (!username) return
@@ -48,175 +61,273 @@ function App() {
               userType = subcategory.charAt(0).toUpperCase() + subcategory.slice(1)
             }
           } catch (e) {
-            // ignore JSON parse errors
+            console.warn('Failed to parse profile data:', e)
           }
         }
         setData({ title, description, image, subscriberCount, bio, userType })
       })
-      .catch((err) => setError(err))
+      .catch((err) => {
+        console.error('Failed to fetch profile data:', err)
+        setError(err)
+      })
       .finally(() => setLoading(false))
   }, [username])
 
+  // Update SEO meta tags when data changes
+  useEffect(() => {
+    if (!data || !username) return
+
+    const profileTitle = generateProfileTitle(data.title, username, data.userType)
+    const profileDescription = generateProfileDescription(data.title, username, data.bio, data.subscriberCount)
+    const profileUrl = `${window.location.origin}${window.location.pathname}?username=${username}`
+
+    // Update meta tags
+    updateMetaTags({
+      title: profileTitle,
+      description: profileDescription,
+      image: data.image,
+      url: profileUrl,
+      username,
+      displayName: data.title
+    })
+
+    // Generate and inject structured data
+    const structuredData = generateProfileStructuredData({
+      username,
+      displayName: data.title,
+      bio: data.bio,
+      image: data.image,
+      subscriberCount: data.subscriberCount,
+      userType: data.userType,
+      url: profileUrl
+    })
+
+    injectStructuredData(structuredData)
+  }, [data, username])
+
   if (!username) {
-    return <p>Provide a username query parameter, e.g. ?username=moonlightbae</p>
+    return (
+      <div className="app">
+        <div className="error-container" role="alert">
+          <h1>Username Required</h1>
+          <p>Please provide a username query parameter, for example: ?username=moonlightbae</p>
+        </div>
+      </div>
+    )
   }
 
-  if (loading) return <p>Loading…</p>
-  if (error) return <p>Error loading profile.</p>
+  if (loading) {
+    return (
+      <div className="app">
+        <div className="loading-container" role="status" aria-live="polite">
+          <h1>Loading Profile</h1>
+          <p>Loading profile information...</p>
+        </div>
+      </div>
+    )
+  }
+  
+  if (error) {
+    return (
+      <div className="app">
+        <div className="error-container" role="alert">
+          <h1>Error Loading Profile</h1>
+          <p>There was an error loading the profile. Please try again.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app">
+      {/* Skip Navigation */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+      
       {/* Left Sidebar - Login */}
-      <div className="login-sidebar">
-        <div className="login-form">
+      <aside className="login-sidebar" aria-label="Login section">
+        <form className="login-form" role="form" aria-label="Login form">
           <h2>Log in to Snapchat</h2>
           <p className="subtitle">Chat, Snap, and video call your friends. Watch Stories and Spotlight, all from your computer.</p>
           
           <div className="login-field">
-            <label>Username or email address</label>
-            <input type="text" placeholder="Username or email address" />
+            <label htmlFor="username-input">Username or email address</label>
+            <input 
+              id="username-input"
+              type="text" 
+              placeholder="Username or email address"
+              aria-required="true"
+              autoComplete="username"
+            />
           </div>
           
-          <button className="phone-toggle">Use phone number instead</button>
+          <button type="button" className="phone-toggle">Use phone number instead</button>
           
-          <button className="login-btn">Log in</button>
+          <button type="submit" className="login-btn">Log in</button>
           
           <p className="download-link">
-            Looking for the app? <a href="https://snapchat.com/download">Get it here.</a>
+            Looking for the app? <a href="https://snapchat.com/download" target="_blank" rel="noopener noreferrer">Get it here.</a>
           </p>
-        </div>
-      </div>
+        </form>
+      </aside>
 
       {/* Right Main Content */}
-      <div className="main-content">
+      <main id="main-content" className="main-content">
         {/* Top Navigation */}
-        <nav className="top-navigation">
+        <nav className="top-navigation" role="navigation" aria-label="Primary navigation">
           <div className="nav-brand">
-            <div className="snapchat-logo">👻</div>
-            <div className="search-box">
-              <span>🔍</span>
-              <input type="text" placeholder="Search" />
+            <div className="snapchat-logo" role="img" aria-label="Snapchat logo">👻</div>
+            <div className="search-box" role="search">
+              <span role="img" aria-label="Search icon">🔍</span>
+              <label htmlFor="search-input" className="sr-only">Search</label>
+              <input 
+                id="search-input"
+                type="text" 
+                placeholder="Search"
+                aria-label="Search Snapchat"
+              />
             </div>
           </div>
           
-          <div className="nav-menu">
-            <a href="#" className="nav-item">
-              <div className="nav-icon"></div>
-              <span className="nav-label">Stories</span>
-            </a>
-            <a href="#" className="nav-item">
-              <div className="nav-icon"></div>
-              <span className="nav-label">Spotlight</span>
-            </a>
-            <a href="#" className="nav-item">
-              <div className="nav-icon"></div>
-              <span className="nav-label">Chat</span>
-            </a>
-            <a href="#" className="nav-item">
-              <div className="nav-icon"></div>
-              <span className="nav-label">Lenses</span>
-            </a>
-            <a href="#" className="nav-item">
-              <div className="nav-icon"></div>
-              <span className="nav-label">Snapchat+</span>
-            </a>
-            <button className="download-btn">Download</button>
-          </div>
+          <ul className="nav-menu" role="menubar">
+            <li role="none">
+              <a href="#" className="nav-item" role="menuitem" aria-label="Stories">
+                <div className="nav-icon" aria-hidden="true"></div>
+                <span className="nav-label">Stories</span>
+              </a>
+            </li>
+            <li role="none">
+              <a href="#" className="nav-item" role="menuitem" aria-label="Spotlight">
+                <div className="nav-icon" aria-hidden="true"></div>
+                <span className="nav-label">Spotlight</span>
+              </a>
+            </li>
+            <li role="none">
+              <a href="#" className="nav-item" role="menuitem" aria-label="Chat">
+                <div className="nav-icon" aria-hidden="true"></div>
+                <span className="nav-label">Chat</span>
+              </a>
+            </li>
+            <li role="none">
+              <a href="#" className="nav-item" role="menuitem" aria-label="Lenses">
+                <div className="nav-icon" aria-hidden="true"></div>
+                <span className="nav-label">Lenses</span>
+              </a>
+            </li>
+            <li role="none">
+              <a href="#" className="nav-item" role="menuitem" aria-label="Snapchat Plus">
+                <div className="nav-icon" aria-hidden="true"></div>
+                <span className="nav-label">Snapchat+</span>
+              </a>
+            </li>
+            <li role="none">
+              <button className="download-btn" aria-label="Download Snapchat">Download</button>
+            </li>
+          </ul>
         </nav>
 
         {/* Profile Section */}
-        <div className="profile-section">
+        <section className="profile-section" aria-labelledby="profile-heading">
           {data?.image && (
-            <img src={data.image} alt="Profile Picture" className="profile-image" />
+            <img 
+              src={data.image} 
+              alt={`${data?.title || username}'s profile picture`} 
+              className="profile-image" 
+              loading="eager"
+              decoding="async"
+            />
           )}
           
           <div className="profile-info">
             <div className="profile-header">
               <div>
-                <h1 className="profile-name">{data?.title || 'Loading...'}</h1>
+                <h1 id="profile-heading" className="profile-name">{data?.title || 'Loading...'}</h1>
               </div>
-              <button className="share-btn">
-                <span>📤</span> Share
+              <button className="share-btn" aria-label="Share profile">
+                <span role="img" aria-hidden="true">📤</span> Share
               </button>
             </div>
             
             <div className="profile-meta">
-              <span className="profile-username">{username}•</span>
+              <span className="profile-username">@{username}</span>
               {data?.userType && (
-                <span className="user-type">{data.userType}•</span>
+                <span className="user-type" aria-label={`User type: ${data.userType}`}> • {data.userType}</span>
               )}
               {data?.subscriberCount && (
-                <span className="follower-count">{data.subscriberCount.toLocaleString()} followers•</span>
+                <span className="follower-count" aria-label={`${data.subscriberCount} followers`}> • {data.subscriberCount} followers</span>
               )}
-              <span className="last-updated">Last updated 8/15/2025</span>
+              <span className="last-updated"> • Last updated 8/15/2025</span>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Profile Bio */}
         {data?.bio && (
-          <div className="profile-bio">
+          <section className="profile-bio" aria-labelledby="bio-heading">
+            <h2 id="bio-heading" className="sr-only">Biography</h2>
             {data.bio}
-          </div>
+          </section>
         )}
 
         {/* Content Area */}
-        <div className="content-area">
+        <section className="content-area" aria-labelledby="content-heading">
+          <h2 id="content-heading" className="sr-only">Profile Content</h2>
           <Tabs username={username} displayName={data?.title} />
-        </div>
+        </section>
 
+        </main>
+        
         {/* Footer */}
-        <footer className="footer">
+        <footer className="footer" role="contentinfo">
           <div className="footer-columns">
             <div className="footer-section">
-              <h4>Company</h4>
+              <h3>Company</h3>
               <ul>
-                <li><a href="#">Snap Inc.</a></li>
-                <li><a href="#">Careers</a></li>
-                <li><a href="#">News</a></li>
+                <li><a href="#" aria-label="Visit Snap Inc. page">Snap Inc.</a></li>
+                <li><a href="#" aria-label="View career opportunities">Careers</a></li>
+                <li><a href="#" aria-label="Read news and updates">News</a></li>
               </ul>
             </div>
             
             <div className="footer-section">
-              <h4>Community</h4>
+              <h3>Community</h3>
               <ul>
-                <li><a href="#">Support</a></li>
-                <li><a href="#">Community Guidelines</a></li>
-                <li><a href="#">Safety Center</a></li>
+                <li><a href="#" aria-label="Get support and help">Support</a></li>
+                <li><a href="#" aria-label="Read community guidelines">Community Guidelines</a></li>
+                <li><a href="#" aria-label="Visit safety center">Safety Center</a></li>
               </ul>
             </div>
             
             <div className="footer-section">
-              <h4>Advertising</h4>
+              <h3>Advertising</h3>
               <ul>
-                <li><a href="#">Buy Ads</a></li>
-                <li><a href="#">Advertising Policies</a></li>
-                <li><a href="#">Political Ads Library</a></li>
+                <li><a href="#" aria-label="Purchase advertising">Buy Ads</a></li>
+                <li><a href="#" aria-label="Read advertising policies">Advertising Policies</a></li>
+                <li><a href="#" aria-label="Browse political ads library">Political Ads Library</a></li>
               </ul>
             </div>
             
             <div className="footer-section">
-              <h4>Legal</h4>
+              <h3>Legal</h3>
               <ul>
-                <li><a href="#">Privacy Center</a></li>
-                <li><a href="#">Your Privacy Choices</a></li>
-                <li><a href="#">Cookie Policy</a></li>
+                <li><a href="#" aria-label="Visit privacy center">Privacy Center</a></li>
+                <li><a href="#" aria-label="Manage your privacy choices">Your Privacy Choices</a></li>
+                <li><a href="#" aria-label="Read cookie policy">Cookie Policy</a></li>
               </ul>
             </div>
           </div>
           
           <div className="footer-bottom">
-            <select className="language-selector">
-              <option>English (US)</option>
+            <label htmlFor="language-selector" className="sr-only">Select language</label>
+            <select id="language-selector" className="language-selector" aria-label="Language selection">
+              <option value="en-US">English (US)</option>
             </select>
             
-            <div className="legal-links">
-              <a href="https://snap.com/en-US/privacy">Privacy Policy</a>
-              <a href="https://snap.com/en-US/terms">Terms of Service</a>
-            </div>
+            <nav className="legal-links" aria-label="Legal links">
+              <a href="https://snap.com/en-US/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+              <a href="https://snap.com/en-US/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+            </nav>
           </div>
         </footer>
-      </div>
     </div>
   )
 }

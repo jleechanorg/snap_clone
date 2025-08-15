@@ -1,0 +1,36 @@
+{
+  "name": "Snapchat Profile Clone",
+  "short_name": "SnapClone",
+  "description": "View and explore public Snapchat profiles with stories, spotlight content, and user information.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFC00",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["social", "entertainment", "lifestyle"],
+  "lang": "en-US",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "prefer_related_applications": false
+}

@@ -1,0 +1,39 @@
+# Robots.txt for Snapchat Profile Clone
+User-agent: *
+Allow: /
+
+# Allow indexing of profile pages
+Allow: /?username=*
+
+# Disallow sensitive or non-essential pages
+Disallow: /admin
+Disallow: /api
+Disallow: /private
+Disallow: *.json$
+Disallow: /*?*session*
+Disallow: /*?*token*
+
+# Allow common crawlers and social media bots
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+# Sitemap location
+Sitemap: https://snapchat-clone.com/sitemap.xml
+
+# Crawl delay for respectful crawling
+Crawl-delay: 1
