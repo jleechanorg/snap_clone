@@ -1,22 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
-
-// Debounce utility to reduce API calls
-function useDebounce(value, delay) {
-  const [debouncedValue, setDebouncedValue] = useState(value)
-  
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-    
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-  
-  return debouncedValue
-}
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -26,12 +9,21 @@ const LoadingSpinner = ({ tabType }) => (
   </div>
 )
 
-export default function Tabs({ username, displayName }) {
+export default function Tabs({ username }) {
   const [items, setItems] = useState([])
   const [activeTab, setActiveTab] = useState('stories') // Default to stories first like real Snapchat
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
   const tabRefs = useRef({})
+
+  // Handle tile activation (click/keyboard)
+  const handleTileActivate = useCallback((item) => {
+    // For now, just log the interaction (could be extended to open modals, navigate, etc.)
+    if (import.meta.env.DEV) {
+      console.log('Tile activated:', item)
+    }
+    // Future: Could implement navigation, modal opening, etc.
+  }, [])
 
   const checkAllTabsForContentCallback = useCallback(async () => {
     // First, get the actual tabs from the real Snapchat page
@@ -56,7 +48,7 @@ export default function Tabs({ username, displayName }) {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username, activeTab])
+  }, [username]) // Only depend on username to avoid circular dependencies with internal functions
 
   const fetchTabContentCallback = useCallback(async (tab) => {
     // Start loading immediately but keep existing content visible
@@ -113,9 +105,10 @@ export default function Tabs({ username, displayName }) {
               return null
             }
             
-            // Generate a fallback thumbnail using Snapchat's story preview API
+            // Generate a fallback thumbnail using a reliable placeholder
             if (!thumbnailUrl) {
-              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt_web/story-placeholder-${Math.floor(Math.random() * 5) + 1}.jpg`
+              // Use a reliable placeholder service instead of potentially non-existent URLs
+              thumbnailUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(storyTitle.slice(0, 2))}&background=fffc00&color=000&size=200`
             }
             
             return {
@@ -227,21 +220,14 @@ export default function Tabs({ username, displayName }) {
             const usernameMatch = addLink.match(/\/add\/([^?]+)/)
             if (!usernameMatch) return null
             
-            const relatedUsername = usernameMatch[1]
+            const _relatedUsername = usernameMatch[1]
             
             // Extract name and image from the element
             const nameElement = element.querySelector('h5')
             const imageElement = element.querySelector('img')
             const paragraphElement = element.querySelector('p')
             
-            if (import.meta.env.DEV) {
-              console.log(`Mapping element for ${relatedUsername}:`, {
-                hasName: !!nameElement,
-                hasImage: !!imageElement,
-                name: nameElement?.textContent.trim(),
-                imageSrc: imageElement?.src
-              })
-            }
+            // Debug logging removed for cleaner production code
             
             if (!nameElement) return null
             
@@ -261,10 +247,10 @@ export default function Tabs({ username, displayName }) {
               }
             }
             
-            // If no image found, generate fallback using Snapchat's Bitmoji/avatar service
+            // If no image found, generate fallback using a reliable avatar service
             if (!thumbnailUrl || thumbnailUrl === '') {
-              // Use Snapchat's web capture API for profile previews (similar to og:image)
-              thumbnailUrl = `https://us-east1-aws.api.snapchat.com/web-capture/www.snapchat.com/add/${relatedUsername}/preview/square.jpeg?xp_id=1`
+              // Use a reliable public avatar service instead of internal Snapchat APIs
+              thumbnailUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameElement.textContent.trim())}&background=random&size=120`
             }
             
             return {
@@ -677,7 +663,20 @@ export default function Tabs({ username, displayName }) {
           </div>
         )}
         {items.map((item, index) => (
-          <article key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''} ${item.isStory ? 'story-tile' : ''}`} tabIndex="0" role="button" aria-label={item.isProfile ? `View profile of ${item.user}` : item.isStory ? `View story: ${item.description}` : `View content by ${item.user}`}>
+          <article 
+            key={index} 
+            className={`content-tile ${item.isProfile ? 'profile-tile' : ''} ${item.isStory ? 'story-tile' : ''}`} 
+            tabIndex="0" 
+            role="button" 
+            aria-label={item.isProfile ? `View profile of ${item.user}` : item.isStory ? `View story: ${item.description}` : `View content by ${item.user}`}
+            onClick={() => handleTileActivate(item)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleTileActivate(item)
+              }
+            }}
+          >
             {item.thumbnail && (
               <OptimizedImage
                 src={item.thumbnail} 

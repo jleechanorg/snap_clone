@@ -59,8 +59,11 @@ function App() {
               const subcategory = profile.subcategoryStringId.replace('public-profile-subcategory-v3-', '')
               userType = subcategory.charAt(0).toUpperCase() + subcategory.slice(1)
             }
-          } catch {
-            // ignore JSON parse errors
+          } catch (err) {
+            // Log error in development for debugging
+            if (import.meta.env.DEV) {
+              console.warn('Failed to parse Next.js data:', err)
+            }
           }
         }
         setData({ title, description, image, subscriberCount, bio, userType })
@@ -81,7 +84,7 @@ function App() {
       {/* Left Sidebar - Login */}
       <div className="login-sidebar">
         <div className="login-form">
-          <h2>Log in to Snapchat</h2>
+          <h1>Log in to Snapchat</h1>
           <p className="subtitle">Chat, Snap, and video call your friends. Watch Stories and Spotlight, all from your computer.</p>
           
           <div className="login-field">
@@ -154,7 +157,7 @@ function App() {
           <div className="profile-info">
             <div className="profile-header">
               <div>
-                <h1 className="profile-name">{data?.title || 'Loading...'}</h1>
+                <h2 className="profile-name">{data?.title || 'Loading...'}</h2>
               </div>
               <button className="share-btn">
                 <span>📤</span> Share

@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Allow crawling of main pages
+Allow: /?username=*
+
+# Sitemap location
+Sitemap: https://snap-clone.com/sitemap.xml
+
+# Crawl delay
+Crawl-delay: 1
