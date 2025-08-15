@@ -37,7 +37,7 @@
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
     
     <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' https://www.snapchat.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' https://www.snapchat.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" />
     
     <!-- Favicon and Icons -->
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
@@ -49,9 +49,41 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="https://snapchat-clone.com/" />
     
-    <!-- Preconnect for Performance -->
-    <link rel="preconnect" href="https://www.snapchat.com" />
+    <!-- Performance Optimizations -->
+    <link rel="preconnect" href="https://www.snapchat.com" crossorigin />
     <link rel="dns-prefetch" href="https://www.snapchat.com" />
+    <link rel="dns-prefetch" href="https://us-east1-aws.api.snapchat.com" />
+    <link rel="preconnect" href="https://us-east1-aws.api.snapchat.com" crossorigin />
+    
+    <!-- Preload critical resources -->
+    <link rel="modulepreload" href="/src/main.jsx" />
+    <link rel="modulepreload" href="/src/App.jsx" />
+    
+    <!-- Critical CSS Inlined -->
+    <style>
+      /* Critical Above-the-Fold Styles */
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Roboto',sans-serif;background-color:#000;color:#fff;line-height:1.4;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+      .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+      .skip-link{position:absolute;top:-40px;left:6px;background:#000;color:#fff;padding:8px;text-decoration:none;z-index:1000;border-radius:4px;font-weight:600}
+      .skip-link:focus{top:6px}
+      *:focus-visible{outline:2px solid #0066cc;outline-offset:2px}
+      .app{display:flex;min-height:100vh;background-color:#000}
+      .loading-container,.error-container{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:2rem;text-align:center}
+      .loading-spinner{width:40px;height:40px;border:3px solid #333;border-top:3px solid #FFFC00;border-radius:50%;animation:spin 1s linear infinite}
+      @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+      .login-sidebar{width:400px;background-color:#111;padding:3rem 2rem;display:flex;flex-direction:column;justify-content:center}
+      .main-content{flex:1;background-color:#000;overflow-y:auto}
+      .top-navigation{display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem;background-color:#000;border-bottom:1px solid #333}
+    </style>
+    
+    <!-- Load non-critical CSS asynchronously -->
+    <link rel="preload" href="/src/App.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <link rel="preload" href="/src/index.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript>
+      <link rel="stylesheet" href="/src/App.css" />
+      <link rel="stylesheet" href="/src/index.css" />
+    </noscript>
     
     <!-- Theme -->
     <meta name="theme-color" content="#FFFC00" />

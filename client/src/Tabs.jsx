@@ -1,9 +1,18 @@
 import { useEffect, useState, useRef, lazy, Suspense } from 'react'
 import './App.css'
+import OptimizedImage from './components/OptimizedImage'
 
-// Lazy load components
-const Spotlight = lazy(() => import('./Spotlight'))
-const Stories = lazy(() => import('./Stories'))
+// Optimized lazy loading with better error boundaries and preloading
+const Spotlight = lazy(() => import(/* webpackChunkName: "spotlight" */ './Spotlight'))
+const Stories = lazy(() => import(/* webpackChunkName: "stories" */ './Stories'))
+
+// Loading component optimized for accessibility and UX
+const TabLoadingSpinner = ({ tabType }) => (
+  <div className="tab-loading" role="status" aria-live="polite">
+    <div className="loading-spinner"></div>
+    <span className="sr-only">Loading {tabType} content...</span>
+  </div>
+)
 
 export default function Tabs({ username, displayName }) {
   const [items, setItems] = useState([])
@@ -68,17 +77,23 @@ export default function Tabs({ username, displayName }) {
       
       // Fallback: if no tab navigation found, look for tab-specific content
       if (availableTabs.length === 0) {
-        console.log('No tab navigation found, falling back to content detection')
+        if (import.meta.env.DEV) {
+          console.log('No tab navigation found, falling back to content detection');
+        }
         if (await hasContentForTab('spotlight')) availableTabs.push('spotlight')
         if (await hasContentForTab('lenses')) availableTabs.push('lenses') 
         if (await hasContentForTab('tagged')) availableTabs.push('tagged')
         if (await hasContentForTab('related')) availableTabs.push('related')
       }
       
-      console.log(`Real tabs found for ${username}:`, availableTabs)
+      if (import.meta.env.DEV) {
+        console.log(`Real tabs found for ${username}:`, availableTabs);
+      }
       return availableTabs
     } catch (error) {
-      console.error('Error parsing real tabs:', error)
+      if (import.meta.env.DEV) {
+        console.error('Error parsing real tabs:', error);
+      }
       return []
     }
   }
@@ -154,7 +169,9 @@ export default function Tabs({ username, displayName }) {
       
       return elements.length > 0
     } catch (error) {
-      console.error(`Error checking content for ${tab}:`, error)
+      if (import.meta.env.DEV) {
+        console.error(`Error checking content for ${tab}:`, error);
+      }
       return false
     }
   }
@@ -273,12 +290,14 @@ export default function Tabs({ username, displayName }) {
             const imageElement = element.querySelector('img')
             const paragraphElement = element.querySelector('p')
             
-            console.log(`Mapping element for ${relatedUsername}:`, {
-              hasName: !!nameElement,
-              hasImage: !!imageElement,
-              name: nameElement?.textContent.trim(),
-              imageSrc: imageElement?.src
-            })
+            if (import.meta.env.DEV) {
+              console.log(`Mapping element for ${relatedUsername}:`, {
+                hasName: !!nameElement,
+                hasImage: !!imageElement,
+                name: nameElement?.textContent.trim(),
+                imageSrc: imageElement?.src
+              });
+            }
             
             if (!nameElement) return null
             
@@ -314,10 +333,12 @@ export default function Tabs({ username, displayName }) {
       
       // Debug logging for Related tab
       if (tab === 'related') {
-        console.log(`Related tab debug: Found ${elements.length} elements with selector ${selector}`)
-        elements.slice(0, 5).forEach((el, i) => {
-          console.log(`Element ${i}:`, el.href, el.textContent?.slice(0, 50))
-        })
+        if (import.meta.env.DEV) {
+          console.log(`Related tab debug: Found ${elements.length} elements with selector ${selector}`);
+          elements.slice(0, 5).forEach((el, i) => {
+            console.log(`Element ${i}:`, el.href, el.textContent?.slice(0, 50));
+          });
+        }
       }
       
       let data = elements.map(dataMapper).filter(item => {
@@ -352,7 +373,9 @@ export default function Tabs({ username, displayName }) {
       
       setItems(data)
     } catch (error) {
-      console.error(`Error fetching ${tab} content:`, error)
+      if (import.meta.env.DEV) {
+        console.error(`Error fetching ${tab} content:`, error);
+      }
       setItems([])
     } finally {
       setLoading(false)
@@ -379,26 +402,32 @@ export default function Tabs({ username, displayName }) {
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : availableTabsArray.length - 1
         const prevTab = availableTabsArray[prevIndex]
         setActiveTab(prevTab)
-        tabRefs.current[prevTab]?.focus()
+        // Small delay to ensure state updates before focusing
+        setTimeout(() => tabRefs.current[prevTab]?.focus(), 0)
         break
       case 'ArrowRight':
         event.preventDefault()
         const nextIndex = currentIndex < availableTabsArray.length - 1 ? currentIndex + 1 : 0
         const nextTab = availableTabsArray[nextIndex]
         setActiveTab(nextTab)
-        tabRefs.current[nextTab]?.focus()
+        setTimeout(() => tabRefs.current[nextTab]?.focus(), 0)
         break
       case 'Home':
         event.preventDefault()
         const firstTab = availableTabsArray[0]
         setActiveTab(firstTab)
-        tabRefs.current[firstTab]?.focus()
+        setTimeout(() => tabRefs.current[firstTab]?.focus(), 0)
         break
       case 'End':
         event.preventDefault()
         const lastTab = availableTabsArray[availableTabsArray.length - 1]
         setActiveTab(lastTab)
-        tabRefs.current[lastTab]?.focus()
+        setTimeout(() => tabRefs.current[lastTab]?.focus(), 0)
+        break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        setActiveTab(tab)
         break
     }
   }
@@ -478,7 +507,7 @@ export default function Tabs({ username, displayName }) {
         </button>
       </div>
       
-      <Suspense fallback={<div className="loading-spinner" role="status" aria-live="polite">Loading content...</div>}>
+      <Suspense fallback={<TabLoadingSpinner tabType={activeTab} />}>
         <div 
           className="content-grid"
           role="tabpanel"
@@ -486,34 +515,35 @@ export default function Tabs({ username, displayName }) {
           aria-labelledby={`${activeTab}-tab`}
           aria-live="polite"
           aria-busy={loading}
+          aria-atomic="false"
         >
           {loading && (
-            <div className="loading-message" role="status" aria-live="polite">
+            <div className="loading-message" role="status" aria-live="polite" aria-atomic="true">
               Loading {getTabTitle(activeTab).toLowerCase()}...
             </div>
           )}
           {!loading && items.length === 0 && (
-            <div className="empty-message" role="status">
-              No {getTabTitle(activeTab).toLowerCase()} available.
+            <div className="empty-message" role="status" aria-live="polite" aria-atomic="true">
+              No {getTabTitle(activeTab).toLowerCase()} available for this profile.
             </div>
           )}
           {!loading && items.map((item, index) => (
-            <article key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''}`}>
+            <article key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''}`} tabIndex="0" role="button" aria-label={item.isProfile ? `View profile of ${item.user}` : `View content by ${item.user}`}>
               {item.thumbnail && (
-                <img 
+                <OptimizedImage
                   src={item.thumbnail} 
                   alt={item.isProfile 
-                    ? `${item.user}'s profile picture` 
-                    : `Thumbnail for ${item.description || 'content'} by ${item.user}`
+                    ? `Profile picture of ${item.user}` 
+                    : `Thumbnail image for ${item.description || 'content'} by ${item.user}`
                   } 
                   className={item.isProfile ? "profile-image" : "tile-image"} 
                   loading="lazy"
-                  decoding="async"
+                  sizes="(max-width: 768px) 33vw, 25vw"
                 />
               )}
               <div className="tile-content">
                 {item.user && (
-                  <h3 className="tile-user">{item.user}</h3>
+                  <h4 className="tile-user">{item.user}</h4>
                 )}
                 {item.description && (
                   <p className="tile-description">{item.description}</p>

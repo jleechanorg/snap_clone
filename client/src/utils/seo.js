@@ -14,9 +14,7 @@ export function updateMetaTags({
   title,
   description,
   image,
-  url = window.location.href,
-  username,
-  displayName
+  url = window.location.href
 }) {
   // Update document title
   if (title) {
@@ -112,9 +110,15 @@ export function generateProfileStructuredData(profileData) {
     }
   };
 
-  // Remove undefined values
-  return JSON.stringify(structuredData, (key, value) => 
-    value === undefined ? undefined : value, 2);
+  // Remove undefined and null values for cleaner JSON-LD
+  const cleanStructuredData = JSON.parse(JSON.stringify(structuredData, (key, value) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    return value;
+  }));
+
+  return JSON.stringify(cleanStructuredData, null, 2);
 }
 
 /**
@@ -183,11 +187,27 @@ export function generateProfileDescription(displayName, username, bio, subscribe
  * Sets up error tracking for SEO monitoring
  */
 export function setupSEOErrorTracking() {
-  // Track 404s and other navigation errors
+  // Track image loading errors
   window.addEventListener('error', (event) => {
-    if (event.target.tagName === 'IMG' && event.target.src.includes('snapchat.com')) {
-      console.warn('SEO Warning: Failed to load Snapchat image:', event.target.src);
+    if (event.target.tagName === 'IMG') {
+      if (event.target.src.includes('snapchat.com')) {
+        if (import.meta.env.DEV) {
+          console.warn('SEO Warning: Failed to load Snapchat image:', event.target.src);
+        }
+        // Fallback to default image or hide broken image
+        event.target.style.display = 'none';
+        event.target.alt = 'Image not available';
+      }
     }
+  });
+
+  // Track unhandled promise rejections
+  window.addEventListener('unhandledrejection', (event) => {
+    if (import.meta.env.DEV) {
+      console.warn('SEO Warning: Unhandled promise rejection:', event.reason);
+    }
+    // Prevent the default browser console error
+    event.preventDefault();
   });
 
   // Track fetch errors for API calls
@@ -195,8 +215,21 @@ export function setupSEOErrorTracking() {
   window.fetch = function(...args) {
     return originalFetch.apply(this, args)
       .catch(error => {
-        console.warn('SEO Warning: API fetch failed:', args[0], error);
+        if (import.meta.env.DEV) {
+          console.warn('SEO Warning: API fetch failed:', args[0], error);
+        }
+        // Re-throw to maintain original behavior
         throw error;
       });
   };
+
+  // Track page visibility changes for better analytics
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // Page became visible - good for SEO tracking
+      if (import.meta.env.DEV) {
+        console.log('Page visibility: visible');
+      }
+    }
+  });
 }

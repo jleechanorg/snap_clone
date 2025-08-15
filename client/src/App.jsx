@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import './App.css'
-import Tabs from './Tabs'
 import { 
   updateMetaTags, 
   generateProfileStructuredData, 
@@ -9,6 +8,16 @@ import {
   generateProfileDescription,
   setupSEOErrorTracking
 } from './utils/seo'
+import OptimizedImage from './components/OptimizedImage'
+
+// Lazy load heavy components with preloading
+const Tabs = lazy(() => import(/* webpackChunkName: "tabs" */ './Tabs'))
+
+// Preload critical components when user might need them
+const preloadTabs = () => {
+  const componentImport = import('./Tabs')
+  return componentImport
+}
 
 function App() {
   const params = new URLSearchParams(window.location.search)
@@ -21,7 +30,12 @@ function App() {
   useEffect(() => {
     // Setup SEO error tracking on component mount
     setupSEOErrorTracking()
-  }, [])
+    
+    // Preload Tabs component when we have a username
+    if (username) {
+      preloadTabs()
+    }
+  }, [username])
 
   useEffect(() => {
     if (!username) return
@@ -75,35 +89,65 @@ function App() {
 
   // Update SEO meta tags when data changes
   useEffect(() => {
-    if (!data || !username) return
+    if (!username) return
 
-    const profileTitle = generateProfileTitle(data.title, username, data.userType)
-    const profileDescription = generateProfileDescription(data.title, username, data.bio, data.subscriberCount)
     const profileUrl = `${window.location.origin}${window.location.pathname}?username=${username}`
 
-    // Update meta tags
-    updateMetaTags({
-      title: profileTitle,
-      description: profileDescription,
-      image: data.image,
-      url: profileUrl,
-      username,
-      displayName: data.title
-    })
+    if (data) {
+      // Profile data is available - use dynamic content
+      const profileTitle = generateProfileTitle(data.title, username, data.userType)
+      const profileDescription = generateProfileDescription(data.title, username, data.bio, data.subscriberCount)
 
-    // Generate and inject structured data
-    const structuredData = generateProfileStructuredData({
-      username,
-      displayName: data.title,
-      bio: data.bio,
-      image: data.image,
-      subscriberCount: data.subscriberCount,
-      userType: data.userType,
-      url: profileUrl
-    })
+      // Update meta tags with profile data
+      updateMetaTags({
+        title: profileTitle,
+        description: profileDescription,
+        image: data.image,
+        url: profileUrl,
+        username,
+        displayName: data.title
+      })
 
-    injectStructuredData(structuredData)
-  }, [data, username])
+      // Generate and inject structured data
+      const structuredData = generateProfileStructuredData({
+        username,
+        displayName: data.title,
+        bio: data.bio,
+        image: data.image,
+        subscriberCount: data.subscriberCount,
+        userType: data.userType,
+        url: profileUrl
+      })
+
+      injectStructuredData(structuredData)
+    } else if (username && !loading) {
+      // Profile data loading or failed - use fallback meta tags
+      const fallbackTitle = `@${username} - Snapchat Profile | Stories & Spotlight`
+      const fallbackDescription = `View @${username}'s Snapchat profile, stories, and spotlight content. Explore their latest posts and discover their content on this modern Snapchat profile viewer.`
+
+      updateMetaTags({
+        title: fallbackTitle,
+        description: fallbackDescription,
+        image: null,
+        url: profileUrl,
+        username,
+        displayName: username
+      })
+
+      // Basic structured data for loading state
+      const basicStructuredData = generateProfileStructuredData({
+        username,
+        displayName: username,
+        bio: null,
+        image: null,
+        subscriberCount: null,
+        userType: null,
+        url: profileUrl
+      })
+
+      injectStructuredData(basicStructuredData)
+    }
+  }, [data, username, loading])
 
   if (!username) {
     return (
@@ -146,7 +190,7 @@ function App() {
       {/* Left Sidebar - Login */}
       <aside className="login-sidebar" aria-label="Login section">
         <form className="login-form" role="form" aria-label="Login form">
-          <h2>Log in to Snapchat</h2>
+          <h1>Log in to Snapchat</h1>
           <p className="subtitle">Chat, Snap, and video call your friends. Watch Stories and Spotlight, all from your computer.</p>
           
           <div className="login-field">
@@ -188,39 +232,39 @@ function App() {
             </div>
           </div>
           
-          <ul className="nav-menu" role="menubar">
-            <li role="none">
-              <a href="#" className="nav-item" role="menuitem" aria-label="Stories">
+          <ul className="nav-menu" role="menubar" aria-label="Primary navigation menu">
+            <li role="menuitem">
+              <a href="#" className="nav-item">
                 <div className="nav-icon" aria-hidden="true"></div>
                 <span className="nav-label">Stories</span>
               </a>
             </li>
-            <li role="none">
-              <a href="#" className="nav-item" role="menuitem" aria-label="Spotlight">
+            <li role="menuitem">
+              <a href="#" className="nav-item">
                 <div className="nav-icon" aria-hidden="true"></div>
                 <span className="nav-label">Spotlight</span>
               </a>
             </li>
-            <li role="none">
-              <a href="#" className="nav-item" role="menuitem" aria-label="Chat">
+            <li role="menuitem">
+              <a href="#" className="nav-item">
                 <div className="nav-icon" aria-hidden="true"></div>
                 <span className="nav-label">Chat</span>
               </a>
             </li>
-            <li role="none">
-              <a href="#" className="nav-item" role="menuitem" aria-label="Lenses">
+            <li role="menuitem">
+              <a href="#" className="nav-item">
                 <div className="nav-icon" aria-hidden="true"></div>
                 <span className="nav-label">Lenses</span>
               </a>
             </li>
-            <li role="none">
-              <a href="#" className="nav-item" role="menuitem" aria-label="Snapchat Plus">
+            <li role="menuitem">
+              <a href="#" className="nav-item">
                 <div className="nav-icon" aria-hidden="true"></div>
                 <span className="nav-label">Snapchat+</span>
               </a>
             </li>
-            <li role="none">
-              <button className="download-btn" aria-label="Download Snapchat">Download</button>
+            <li role="menuitem">
+              <button className="download-btn">Download</button>
             </li>
           </ul>
         </nav>
@@ -228,19 +272,19 @@ function App() {
         {/* Profile Section */}
         <section className="profile-section" aria-labelledby="profile-heading">
           {data?.image && (
-            <img 
+            <OptimizedImage
               src={data.image} 
-              alt={`${data?.title || username}'s profile picture`} 
+              alt={`Profile picture of ${data?.title || username}`} 
               className="profile-image" 
               loading="eager"
-              decoding="async"
+              sizes="(max-width: 768px) 120px, 150px"
             />
           )}
           
           <div className="profile-info">
             <div className="profile-header">
               <div>
-                <h1 id="profile-heading" className="profile-name">{data?.title || 'Loading...'}</h1>
+                <h2 id="profile-heading" className="profile-name">{data?.title || 'Loading...'}</h2>
               </div>
               <button className="share-btn" aria-label="Share profile">
                 <span role="img" aria-hidden="true">📤</span> Share
@@ -271,7 +315,14 @@ function App() {
         {/* Content Area */}
         <section className="content-area" aria-labelledby="content-heading">
           <h2 id="content-heading" className="sr-only">Profile Content</h2>
-          <Tabs username={username} displayName={data?.title} />
+          <Suspense fallback={
+            <div className="tabs-loading" role="status" aria-live="polite">
+              <div className="loading-spinner"></div>
+              <span>Loading content...</span>
+            </div>
+          }>
+            <Tabs username={username} displayName={data?.title} />
+          </Suspense>
         </section>
 
         </main>
