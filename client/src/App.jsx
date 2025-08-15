@@ -20,7 +20,17 @@ function App() {
         const doc = parser.parseFromString(html, 'text/html')
         const title = doc.querySelector('meta[property="og:title"]')?.content
         const description = doc.querySelector('meta[property="og:description"]')?.content
-        const image = doc.querySelector('meta[property="og:image"]')?.content
+        
+        // Try to get the working profile image from srcset first, then fallback to og:image
+        let image = doc.querySelector('meta[property="og:image"]')?.content
+        const profileImg = doc.querySelector('img[alt="Profile Picture"]')
+        if (profileImg?.srcset) {
+          // Extract the URL from srcset (format: "url size")
+          const srcsetUrl = profileImg.srcset.split(' ')[0]
+          if (srcsetUrl && srcsetUrl.startsWith('https://')) {
+            image = srcsetUrl
+          }
+        }
         const nextData = doc.getElementById('__NEXT_DATA__')?.textContent
         let subscriberCount, bio, userType
         if (nextData) {
@@ -47,7 +57,7 @@ function App() {
               const subcategory = profile.subcategoryStringId.replace('public-profile-subcategory-v3-', '')
               userType = subcategory.charAt(0).toUpperCase() + subcategory.slice(1)
             }
-          } catch (e) {
+          } catch {
             // ignore JSON parse errors
           }
         }
