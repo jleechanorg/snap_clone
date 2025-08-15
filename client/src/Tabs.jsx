@@ -42,24 +42,122 @@ export default function Tabs({ username, displayName }) {
 
   async function checkTabHasContent(tab) {
     try {
-      let url, selector
+      // Use the exact same logic as fetchTabContent but just check if we get valid items
+      let url, selector, dataMapper
       
       switch (tab) {
         case 'spotlight':
           url = `/snap/@${username}?locale=en-US&tab=Spotlight`
           selector = 'a[href*="/spotlight/"]'
+          dataMapper = (tile) => {
+            const linkText = tile.textContent?.trim() || ''
+            const numbers = linkText.match(/\d+[kK]?/g) || []
+            const [views, comments, shares] = numbers.slice(0, 3)
+            
+            return {
+              thumbnail: tile.querySelector('img')?.src,
+              user: tile.href?.match(/@([^/]+)/)?.[1] || 'Unknown',
+              description: linkText.replace(/\d+[kK]?\s*/g, '').trim() || 'Spotlight video',
+              views: views || '0',
+              comments: comments || '0', 
+              shares: shares || '0'
+            }
+          }
           break
         case 'lenses':
           url = `/snap/@${username}?locale=en-US&tab=Lenses`
           selector = 'a[href*="/unlock/"]'
+          dataMapper = (tile) => ({
+            thumbnail: tile.querySelector('img')?.src,
+            user: username,
+            description: tile.querySelector('p')?.textContent || 'Lens'
+          })
           break
         case 'tagged':
           url = `/snap/@${username}?locale=en-US&tab=Tagged`
           selector = 'a[href*="/spotlight/"], script[type="application/ld+json"]'
+          dataMapper = (element) => {
+            // Same logic as in fetchTabContent
+            if (element.tagName === 'SCRIPT') {
+              try {
+                const data = JSON.parse(element.textContent)
+                if (data['@type'] === 'VideoObject' && data.keywords && data.keywords.includes('#' + username.replace(/\d+$/, ''))) {
+                  const creatorName = data.creator?.alternateName || 'Unknown'
+                  return {
+                    thumbnail: data.thumbnailUrl,
+                    user: creatorName,
+                    description: data.name || data.description || 'Tagged content',
+                    views: '0',
+                    comments: '0',
+                    shares: '0'
+                  }
+                }
+                return null
+              } catch (e) {
+                return null
+              }
+            }
+            
+            const linkText = element.textContent?.trim() || ''
+            const numbers = linkText.match(/\d+[kK]?/g) || []
+            const userName = element.href?.match(/@([^/]+)/)?.[1] || 'Unknown'
+            
+            let description = 'Tagged content'
+            let container = element.closest('div')
+            for (let i = 0; i < 3 && container; i++) {
+              const paragraphs = container.querySelectorAll('p')
+              for (const p of paragraphs) {
+                const text = p.textContent?.trim()
+                if (text && (text.includes('#') || text.length > 20)) {
+                  description = text
+                  break
+                }
+              }
+              if (description !== 'Tagged content') break
+              container = container.parentElement
+            }
+            
+            return {
+              thumbnail: element.querySelector('img')?.src,
+              user: userName,
+              description: description,
+              views: numbers[0] || '0',
+              comments: numbers[1] || '0',
+              shares: numbers[2] || '0'
+            }
+          }
           break
         case 'related':
           url = `/snap/@${username}?locale=en-US`
           selector = 'a[href*="/add/"]'
+          dataMapper = (element) => {
+            const addLink = element.href
+            const usernameMatch = addLink.match(/\/add\/([^?]+)/)
+            if (!usernameMatch) return null
+            
+            const relatedUsername = usernameMatch[1]
+            const nameElement = element.querySelector('h5')
+            const imageElement = element.querySelector('img')
+            const paragraphElement = element.querySelector('p')
+            
+            if (!nameElement) return null
+            
+            let thumbnailUrl = null
+            if (imageElement) {
+              thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
+            }
+            
+            if (!thumbnailUrl) {
+              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt/default-profile-${relatedUsername}.webp`
+            }
+            
+            return {
+              thumbnail: thumbnailUrl,
+              user: nameElement.textContent.trim(),
+              description: paragraphElement ? paragraphElement.textContent.trim() : `@${relatedUsername}`,
+              isProfile: true
+            }
+          }
           break
         default:
           return false
@@ -70,7 +168,21 @@ export default function Tabs({ username, displayName }) {
       const doc = new DOMParser().parseFromString(html, 'text/html')
       const elements = [...doc.querySelectorAll(selector)]
       
-      return elements.length > 0
+      let data = elements.map(dataMapper).filter(item => item && item.thumbnail)
+      
+      // Apply the same filtering as in fetchTabContent
+      if (tab === 'tagged') {
+        data = data.filter(item => item.user !== username)
+        const seen = new Set()
+        data = data.filter(item => {
+          const key = `${item.user}:${item.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      }
+      
+      return data.length > 0
     } catch (error) {
       console.error(`Error checking content for ${tab}:`, error)
       return false
