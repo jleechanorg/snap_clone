@@ -310,13 +310,17 @@ export default function Tabs({ username, displayName }) {
       }
       
       let data = elements.map(dataMapper).filter(item => {
-        if (!item || !item.thumbnail) return false
+        if (!item) return false
         
-        // For profile tiles (Related tab), require user name
-        if (item.isProfile && !item.user) return false
+        // For profile tiles (Related tab), only require user name (thumbnails optional)
+        if (item.isProfile) {
+          return !!item.user
+        }
         
-        // For content tiles, require user name 
-        if (!item.isProfile && !item.user) return false
+        // For content tiles, require both thumbnail and user name 
+        if (!item.isProfile) {
+          return !!(item.thumbnail && item.user)
+        }
         
         return true
       })
