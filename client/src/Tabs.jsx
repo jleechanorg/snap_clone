@@ -26,53 +26,50 @@ export default function Tabs({ username }) {
     // Future: Could implement navigation, modal opening, etc.
   }, [])
 
-  const checkAllTabsForContentCallback = useCallback(async () => {
-    // Use a more performance-friendly approach: assume common tabs exist and validate lazily
-    const commonTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
-    setAvailableTabs(new Set(commonTabs))
+  const checkAllTabsForContentCallback = useCallback(() => {
+    // Performance-first approach: show static tabs immediately, no validation on initial load
+    const staticTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
+    setAvailableTabs(new Set(staticTabs))
     
-    // Don't block the main thread - check tabs in background after initial render
-    setTimeout(async () => {
-      try {
-        const realTabs = await parseTabsFromRealPage()
-        const tabsWithContent = new Set()
-        
-        // Check tabs in parallel instead of sequential
-        const contentChecks = realTabs.map(async (tab) => {
-          const hasContent = await checkTabHasContent(tab)
-          return { tab, hasContent }
-        })
-        
-        const results = await Promise.all(contentChecks)
-        results.forEach(({ tab, hasContent }) => {
-          if (hasContent) {
-            tabsWithContent.add(tab)
+    // Only validate tabs in background using requestIdleCallback to avoid blocking main thread
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(async () => {
+        try {
+          // This runs during browser idle time, not during critical rendering
+          const realTabs = await parseTabsFromRealPage()
+          const tabsWithContent = new Set()
+          
+          // Check tabs one by one with delays to avoid blocking
+          for (const tab of realTabs) {
+            // Use setTimeout to yield to main thread between requests
+            await new Promise(resolve => setTimeout(resolve, 50))
+            const hasContent = await checkTabHasContent(tab)
+            if (hasContent) {
+              tabsWithContent.add(tab)
+            }
           }
-        })
-        
-        setAvailableTabs(tabsWithContent)
-        
-        // If current active tab has no content, switch to first available tab
-        if (!tabsWithContent.has(activeTab)) {
-          const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
-          if (firstAvailable) {
-            setActiveTab(firstAvailable)
+          
+          // Only update if we found different tabs than default
+          if (tabsWithContent.size !== staticTabs.length) {
+            setAvailableTabs(tabsWithContent)
+          }
+        } catch (error) {
+          // Silently fail and keep static tabs - performance over perfect accuracy
+          if (import.meta.env.DEV) {
+            console.warn('Background tab validation failed:', error)
           }
         }
-      } catch (error) {
-        // Keep the common tabs if validation fails
-        if (import.meta.env.DEV) {
-          console.warn('Tab validation failed, using common tabs:', error)
-        }
-      }
-    }, 100) // Small delay to not block initial render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username]) // Only depend on username to avoid circular dependencies with internal functions
+      }, { timeout: 5000 })
+    }
+  }, [username])
 
   const fetchTabContentCallback = useCallback(async (tab) => {
     const reqId = ++requestIdRef.current
-    // Start loading immediately but keep existing content visible
+    // Show loading state immediately for user feedback
     setLoading(true)
+    
+    // For non-active tab prefetching, use idle time. For active tab, load immediately.
+    const isActiveTabLoad = tab === activeTab
     
     try {
       let url, selector, dataMapper
@@ -356,7 +353,18 @@ export default function Tabs({ username }) {
 
   useEffect(() => {
     if (!username || !availableTabs.has(activeTab)) return
-    fetchTabContentCallback(activeTab)
+    
+    // Defer even active tab content loading to avoid blocking critical rendering path
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        fetchTabContentCallback(activeTab)
+      }, { timeout: 2000 })
+    } else {
+      // Fallback for browsers without requestIdleCallback
+      setTimeout(() => {
+        fetchTabContentCallback(activeTab)
+      }, 100)
+    }
   }, [username, activeTab, availableTabs, fetchTabContentCallback])
 
   async function parseTabsFromRealPage() {

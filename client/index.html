@@ -22,6 +22,14 @@
     <link rel="dns-prefetch" href="https://ui-avatars.com" />
     <link rel="modulepreload" href="/src/main.jsx" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Critical path optimization -->
+    <style>
+      /* Inline critical CSS for above-the-fold content */
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      .app { display: grid; grid-template-columns: 400px 1fr; min-height: 100vh; }
+      .profile-section { padding: 2rem; display: flex; align-items: flex-start; gap: 2rem; }
+      .profile-image { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #fffc00; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
