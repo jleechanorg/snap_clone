@@ -6,11 +6,76 @@ import './App.css'
 export default function Tabs({ username, displayName }) {
   const [items, setItems] = useState([])
   const [activeTab, setActiveTab] = useState('spotlight')
+  const [availableTabs, setAvailableTabs] = useState(new Set(['spotlight', 'lenses', 'tagged', 'related']))
 
   useEffect(() => {
     if (!username) return
+    checkAllTabsForContent()
+  }, [username])
+
+  useEffect(() => {
+    if (!username || !availableTabs.has(activeTab)) return
     fetchTabContent(activeTab)
-  }, [username, activeTab])
+  }, [username, activeTab, availableTabs])
+
+  async function checkAllTabsForContent() {
+    const tabsWithContent = new Set()
+    const tabs = ['spotlight', 'lenses', 'tagged', 'related']
+    
+    for (const tab of tabs) {
+      const hasContent = await checkTabHasContent(tab)
+      if (hasContent) {
+        tabsWithContent.add(tab)
+      }
+    }
+    
+    setAvailableTabs(tabsWithContent)
+    
+    // If current active tab has no content, switch to first available tab
+    if (!tabsWithContent.has(activeTab)) {
+      const firstAvailable = tabs.find(tab => tabsWithContent.has(tab))
+      if (firstAvailable) {
+        setActiveTab(firstAvailable)
+      }
+    }
+  }
+
+  async function checkTabHasContent(tab) {
+    try {
+      let url, selector
+      
+      switch (tab) {
+        case 'spotlight':
+          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
+          selector = 'a[href*="/spotlight/"]'
+          break
+        case 'lenses':
+          url = `/snap/@${username}?locale=en-US&tab=Lenses`
+          selector = 'a[href*="/unlock/"]'
+          break
+        case 'tagged':
+          url = `/snap/@${username}?locale=en-US&tab=Tagged`
+          selector = 'a[href*="/spotlight/"], script[type="application/ld+json"]'
+          break
+        case 'related':
+          url = `/snap/@${username}?locale=en-US`
+          selector = 'a[href*="/add/"]'
+          break
+        default:
+          return false
+      }
+
+      const res = await fetch(url)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const elements = [...doc.querySelectorAll(selector)]
+      
+      return elements.length > 0
+    } catch (error) {
+      console.error(`Error checking content for ${tab}:`, error)
+      return false
+    }
+  }
 
   async function fetchTabContent(tab) {
     try {
@@ -219,30 +284,38 @@ export default function Tabs({ username, displayName }) {
     <div className="spotlight-content">
       {/* Tab Navigation */}
       <div className="tab-navigation">
-        <button 
-          className={`tab-button ${activeTab === 'spotlight' ? 'active' : ''}`}
-          onClick={() => setActiveTab('spotlight')}
-        >
-          Spotlight
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'lenses' ? 'active' : ''}`}
-          onClick={() => setActiveTab('lenses')}
-        >
-          Lenses
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'tagged' ? 'active' : ''}`}
-          onClick={() => setActiveTab('tagged')}
-        >
-          Tagged
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'related' ? 'active' : ''}`}
-          onClick={() => setActiveTab('related')}
-        >
-          Related
-        </button>
+        {availableTabs.has('spotlight') && (
+          <button 
+            className={`tab-button ${activeTab === 'spotlight' ? 'active' : ''}`}
+            onClick={() => setActiveTab('spotlight')}
+          >
+            Spotlight
+          </button>
+        )}
+        {availableTabs.has('lenses') && (
+          <button 
+            className={`tab-button ${activeTab === 'lenses' ? 'active' : ''}`}
+            onClick={() => setActiveTab('lenses')}
+          >
+            Lenses
+          </button>
+        )}
+        {availableTabs.has('tagged') && (
+          <button 
+            className={`tab-button ${activeTab === 'tagged' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tagged')}
+          >
+            Tagged
+          </button>
+        )}
+        {availableTabs.has('related') && (
+          <button 
+            className={`tab-button ${activeTab === 'related' ? 'active' : ''}`}
+            onClick={() => setActiveTab('related')}
+          >
+            Related
+          </button>
+        )}
       </div>
 
       {/* Sort Filter */}
