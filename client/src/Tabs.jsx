@@ -46,34 +46,55 @@ export default function Tabs({ username, displayName }) {
           break
         case 'tagged':
           url = `/snap/@${username}?locale=en-US&tab=Tagged`
-          selector = 'a[href*="/spotlight/"]' // Tagged content shows spotlight videos that mention the user
-          dataMapper = (tile) => {
-            const linkText = tile.textContent?.trim() || ''
-            const numbers = linkText.match(/\d+[kK]?/g) || []
-            const userName = tile.href?.match(/@([^/]+)/)?.[1] || 'Unknown'
-            
-            // Look for description with hashtags in the DOM structure
-            let description = 'Tagged content'
-            
-            // Look for paragraph elements containing hashtag links in the parent container
-            const container = tile.closest('div')
-            if (container) {
-              const paragraphs = container.querySelectorAll('p')
-              for (const p of paragraphs) {
-                if (p.querySelector('a[href*="/tag/"]') && p.textContent?.trim()) {
-                  description = p.textContent.trim()
-                  break
+          // Use a different approach for tagged content - look for all content that mentions the user
+          selector = 'a[href*="/spotlight/"], script[type="application/ld+json"]'
+          dataMapper = (element) => {
+            // If it's a JSON-LD script, parse the structured data
+            if (element.tagName === 'SCRIPT') {
+              try {
+                const data = JSON.parse(element.textContent)
+                if (data['@type'] === 'VideoObject' && data.keywords && data.keywords.includes('#' + username.replace(/\d+$/, ''))) {
+                  const creatorName = data.creator?.alternateName || 'Unknown'
+                  return {
+                    thumbnail: data.thumbnailUrl,
+                    user: creatorName,
+                    description: data.name || data.description || 'Tagged content',
+                    views: '0', // JSON-LD doesn't always have view counts
+                    comments: '0',
+                    shares: '0'
+                  }
                 }
+                return null
+              } catch (e) {
+                return null
               }
             }
             
-            // If no hashtag description found, use link text without numbers
-            if (description === 'Tagged content' && linkText) {
-              description = linkText.replace(/\d+[kK]?\s*/g, '').trim() || 'Tagged content'
+            // Fallback to regular link parsing with improved description extraction
+            const linkText = element.textContent?.trim() || ''
+            const numbers = linkText.match(/\d+[kK]?/g) || []
+            const userName = element.href?.match(/@([^/]+)/)?.[1] || 'Unknown'
+            
+            // Look for description with hashtags in nearby elements
+            let description = 'Tagged content'
+            
+            // Check parent containers for hashtag descriptions
+            let container = element.closest('div')
+            for (let i = 0; i < 3 && container; i++) {
+              const paragraphs = container.querySelectorAll('p')
+              for (const p of paragraphs) {
+                const text = p.textContent?.trim()
+                if (text && (text.includes('#') || text.length > 20)) {
+                  description = text
+                  break
+                }
+              }
+              if (description !== 'Tagged content') break
+              container = container.parentElement
             }
             
             return {
-              thumbnail: tile.querySelector('img')?.src,
+              thumbnail: element.querySelector('img')?.src,
               user: userName,
               description: description,
               views: numbers[0] || '0',
@@ -83,20 +104,49 @@ export default function Tabs({ username, displayName }) {
           }
           break
         case 'related':
-          // Related tab shows profile recommendations, use mock data that matches real Snapchat
-          const relatedProfiles = [
-            { name: 'FerrariFatboy 🔥', username: 'ferrarifatboy', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdldGaENaazVJU0hoR05HWlNTM0ZXYUhSc1NIRjBQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNanBlZw._RS84,84_FMwebp' },
-            { name: 'Kevin Hart', username: 'lilswag79', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdk1FNUxRVGhPTUcxM1luSlFaMDFYUWpoYWJtTTBQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNcG5n._RS84,84_FMwebp' },
-            { name: 'Snoop Dogg', username: 'snoopdogg', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdmJ6TnRWRzlMVFVaUFpuZHdWa1ZSVFd3eE9GVmlQMkp2UFVWbmEzbEJVVkpKUVd4QldsbEJSU1V6UkNaMVl6MHlOUS5fUlMwLDY0MF9GTWpwZWc._RS84,84_FMwebp' }
-          ]
-          
-          setItems(relatedProfiles.map(profile => ({
-            thumbnail: profile.image,
-            user: profile.name,
-            description: `@${profile.username}`,
-            isProfile: true
-          })))
-          return
+          url = `/snap/@${username}?locale=en-US`
+          // Look for profile recommendation links in the main page
+          selector = 'a[href*="/add/"]'
+          dataMapper = (element) => {
+            // Extract username from the add link
+            const addLink = element.href
+            const usernameMatch = addLink.match(/\/add\/([^?]+)/)
+            if (!usernameMatch) return null
+            
+            const relatedUsername = usernameMatch[1]
+            
+            // Extract name and image from the element
+            const nameElement = element.querySelector('h5')
+            const imageElement = element.querySelector('img')
+            const paragraphElement = element.querySelector('p')
+            
+            console.log(`Mapping element for ${relatedUsername}:`, {
+              hasName: !!nameElement,
+              hasImage: !!imageElement,
+              name: nameElement?.textContent.trim(),
+              imageSrc: imageElement?.src
+            })
+            
+            if (!nameElement) return null
+            
+            // Get thumbnail URL - try multiple sources
+            let thumbnailUrl = null
+            if (imageElement) {
+              thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
+            }
+            
+            // If no image found, use fallback URL pattern based on username
+            if (!thumbnailUrl) {
+              thumbnailUrl = `https://cf-st.sc-cdn.net/aps/bolt/default-profile-${relatedUsername}.webp`
+            }
+            
+            return {
+              thumbnail: thumbnailUrl,
+              user: nameElement.textContent.trim(),
+              description: paragraphElement ? paragraphElement.textContent.trim() : `@${relatedUsername}`,
+              isProfile: true
+            }
+          }
           break
         default:
           return
@@ -106,12 +156,46 @@ export default function Tabs({ username, displayName }) {
       const html = await res.text()
       const doc = new DOMParser().parseFromString(html, 'text/html')
       
-      const tiles = [...doc.querySelectorAll(selector)]
-      let data = tiles.map(dataMapper).filter(item => item.thumbnail)
+      const elements = [...doc.querySelectorAll(selector)]
+      
+      // Debug logging for Related tab
+      if (tab === 'related') {
+        console.log(`Related tab debug: Found ${elements.length} elements with selector ${selector}`)
+        elements.slice(0, 5).forEach((el, i) => {
+          console.log(`Element ${i}:`, el.href, el.textContent?.slice(0, 50))
+        })
+      }
+      
+      let data = elements.map(dataMapper).filter(item => item && item.thumbnail)
       
       // For Tagged tab, filter out entries that are from the profile owner to show diverse users
       if (tab === 'tagged') {
         data = data.filter(item => item.user !== username)
+        // Remove duplicates based on user + description combination
+        const seen = new Set()
+        data = data.filter(item => {
+          const key = `${item.user}:${item.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      }
+      
+      // For Related tab, add fallback profiles if dynamic parsing failed
+      if (tab === 'related' && data.length === 0) {
+        console.log('Related tab: No dynamic profiles found, using fallback')
+        const fallbackProfiles = [
+          { name: 'Jordyn Jones', username: 'jordynjones11', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdlRVMVdUMWh5YkRWc2IxcExlamhNUlZVMVUyRTFQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNcG5n._RS84,84_FMwebp' },
+          { name: 'Baby Ariel', username: 'babyariel', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdmNHVnlVV1pRZUZWMVkyRnNNVUkwU1dFemJITldQMkp2UFVWbk1HRkJRbTlCVFdkRlJWTkJTbEZIVjBGQ0puVmpQVEkxLl9SUzAsNjQwX0ZNanBlZw._RS84,84_FMwebp' },
+          { name: 'Alissa Violet', username: 'alissaviolet', image: 'https://cf-st.sc-cdn.net/aps/bolt_web/aHR0cHM6Ly9jZi1zdC5zYy1jZG4ubmV0L2Fwcy9ib2x0L2FIUjBjSE02THk5alppMXpkQzV6WXkxalpHNHVibVYwTDJRdlVubFFNVE5CVUZKQ1RrMVVlR2RqTTJORVNXeEtQMkp2UFVWbmEzbEJVVkpKUVd4QldsbEJSU1V6UkNaMVl6MHlOUS5fUlMwLDY0MF9GTWpwZWc._RS84,84_FMwebp' }
+        ]
+        
+        data = fallbackProfiles.map(profile => ({
+          thumbnail: profile.image,
+          user: profile.name,
+          description: `@${profile.username}`,
+          isProfile: true
+        }))
       }
       
       setItems(data)
