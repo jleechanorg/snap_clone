@@ -409,6 +409,8 @@ body {
   gap: 1.5rem;
   opacity: 1;
   transition: opacity 0.2s ease-in-out;
+  contain: layout style;
+  content-visibility: auto;
 }
 
 .content-grid.loading {
@@ -421,6 +423,8 @@ body {
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s, box-shadow 0.2s;
+  contain: layout style paint;
+  content-visibility: auto;
 }
 
 .content-tile:hover {

@@ -15,7 +15,16 @@ function App() {
   useEffect(() => {
     if (!username) return
     setLoading(true)
-    fetch(`/snap/@${username}?locale=en-US`)
+    
+    // Use AbortController for better performance and cleanup
+    const abortController = new AbortController()
+    
+    fetch(`/snap/@${username}?locale=en-US`, {
+      signal: abortController.signal,
+      headers: {
+        'Cache-Control': 'public, max-age=300' // 5 minute cache
+      }
+    })
       .then((res) => res.text())
       .then((html) => {
         const parser = new DOMParser()
@@ -68,8 +77,16 @@ function App() {
         }
         setData({ title, description, image, subscriberCount, bio, userType })
       })
-      .catch((err) => setError(err))
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setError(err)
+        }
+      })
       .finally(() => setLoading(false))
+    
+    return () => {
+      abortController.abort()
+    }
   }, [username])
 
   if (!username) {

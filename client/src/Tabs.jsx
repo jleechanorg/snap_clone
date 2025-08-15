@@ -27,27 +27,45 @@ export default function Tabs({ username }) {
   }, [])
 
   const checkAllTabsForContentCallback = useCallback(async () => {
-    // First, get the actual tabs from the real Snapchat page
-    const realTabs = await parseTabsFromRealPage()
-    const tabsWithContent = new Set()
+    // Use a more performance-friendly approach: assume common tabs exist and validate lazily
+    const commonTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
+    setAvailableTabs(new Set(commonTabs))
     
-    // Only check tabs that actually exist on the real page
-    for (const tab of realTabs) {
-      const hasContent = await checkTabHasContent(tab)
-      if (hasContent) {
-        tabsWithContent.add(tab)
+    // Don't block the main thread - check tabs in background after initial render
+    setTimeout(async () => {
+      try {
+        const realTabs = await parseTabsFromRealPage()
+        const tabsWithContent = new Set()
+        
+        // Check tabs in parallel instead of sequential
+        const contentChecks = realTabs.map(async (tab) => {
+          const hasContent = await checkTabHasContent(tab)
+          return { tab, hasContent }
+        })
+        
+        const results = await Promise.all(contentChecks)
+        results.forEach(({ tab, hasContent }) => {
+          if (hasContent) {
+            tabsWithContent.add(tab)
+          }
+        })
+        
+        setAvailableTabs(tabsWithContent)
+        
+        // If current active tab has no content, switch to first available tab
+        if (!tabsWithContent.has(activeTab)) {
+          const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
+          if (firstAvailable) {
+            setActiveTab(firstAvailable)
+          }
+        }
+      } catch (error) {
+        // Keep the common tabs if validation fails
+        if (import.meta.env.DEV) {
+          console.warn('Tab validation failed, using common tabs:', error)
+        }
       }
-    }
-    
-    setAvailableTabs(tabsWithContent)
-    
-    // If current active tab has no content, switch to first available tab
-    if (!tabsWithContent.has(activeTab)) {
-      const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
-      if (firstAvailable) {
-        setActiveTab(firstAvailable)
-      }
-    }
+    }, 100) // Small delay to not block initial render
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username]) // Only depend on username to avoid circular dependencies with internal functions
 
@@ -538,12 +556,6 @@ export default function Tabs({ username }) {
   // Optimized image component with better error handling and loading states
   const OptimizedImage = ({ src, alt, className, loading = "lazy", sizes, width, height }) => {
     const [imgError, setImgError] = useState(false)
-    const [imgLoading, setImgLoading] = useState(true)
-    
-    useEffect(() => {
-      setImgError(false)
-      setImgLoading(true)
-    }, [src])
     
     if (imgError || !src) {
       return (
@@ -568,9 +580,11 @@ export default function Tabs({ username }) {
         width={width}
         height={height}
         onError={() => setImgError(true)}
-        onLoad={() => setImgLoading(false)}
-        style={{ opacity: imgLoading ? 0.5 : 1 }}
         decoding="async"
+        style={{ 
+          contain: 'layout style paint',
+          contentVisibility: 'auto'
+        }}
       />
     )
   }
