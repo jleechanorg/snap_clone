@@ -19,10 +19,12 @@ export default function Tabs({ username, displayName }) {
   }, [username, activeTab, availableTabs])
 
   async function checkAllTabsForContent() {
+    // First, get the actual tabs from the real Snapchat page
+    const realTabs = await parseTabsFromRealPage()
     const tabsWithContent = new Set()
-    const tabs = ['spotlight', 'lenses', 'tagged', 'related']
     
-    for (const tab of tabs) {
+    // Only check tabs that actually exist on the real page
+    for (const tab of realTabs) {
       const hasContent = await checkTabHasContent(tab)
       if (hasContent) {
         tabsWithContent.add(tab)
@@ -33,10 +35,66 @@ export default function Tabs({ username, displayName }) {
     
     // If current active tab has no content, switch to first available tab
     if (!tabsWithContent.has(activeTab)) {
-      const firstAvailable = tabs.find(tab => tabsWithContent.has(tab))
+      const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
       if (firstAvailable) {
         setActiveTab(firstAvailable)
       }
+    }
+  }
+
+  async function parseTabsFromRealPage() {
+    try {
+      const res = await fetch(`/snap/@${username}?locale=en-US`)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      
+      const realTabs = []
+      
+      // Look specifically for clickable tab navigation elements
+      // Check for actual tab URLs in links
+      if (doc.querySelector('a[href*="tab=Spotlight"]')) {
+        realTabs.push('spotlight')
+      }
+      
+      if (doc.querySelector('a[href*="tab=Lenses"]')) {
+        realTabs.push('lenses')
+      }
+      
+      if (doc.querySelector('a[href*="tab=Tagged"]')) {
+        realTabs.push('tagged') 
+      }
+      
+      if (doc.querySelector('a[href*="tab=Related"]')) {
+        realTabs.push('related')
+      }
+      
+      // If no tab URLs found, look for navigation-like elements more carefully
+      if (realTabs.length === 0) {
+        // Look for elements that look like tab navigation (not just content)
+        const navElements = [...doc.querySelectorAll('nav *, [role="navigation"] *')]
+        
+        const hasSpotlightNav = navElements.some(el => 
+          el.textContent?.trim() === 'Spotlight' && el.tagName?.match(/^(BUTTON|A)$/))
+        const hasLensesNav = navElements.some(el => 
+          el.textContent?.trim() === 'Lenses' && el.tagName?.match(/^(BUTTON|A)$/))
+        const hasTaggedNav = navElements.some(el => 
+          el.textContent?.trim() === 'Tagged' && el.tagName?.match(/^(BUTTON|A)$/))
+        const hasRelatedNav = navElements.some(el => 
+          el.textContent?.trim() === 'Related' && el.tagName?.match(/^(BUTTON|A)$/))
+          
+        if (hasSpotlightNav) realTabs.push('spotlight')
+        if (hasLensesNav) realTabs.push('lenses')  
+        if (hasTaggedNav) realTabs.push('tagged')
+        if (hasRelatedNav) realTabs.push('related')
+      }
+      
+      console.log(`Real tabs found for ${username}:`, realTabs)
+      return realTabs.length > 0 ? realTabs : ['tagged', 'related'] // Fallback to most common tabs
+      
+    } catch (error) {
+      console.error('Error parsing real tabs:', error)
+      // Conservative fallback - most profiles have at least these
+      return ['tagged', 'related']
     }
   }
 
