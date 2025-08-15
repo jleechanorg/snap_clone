@@ -31,7 +31,7 @@ body {
   max-width: 300px;
 }
 
-.login-form h2 {
+.login-form h1 {
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 1rem;
@@ -225,6 +225,9 @@ body {
   border-radius: 50%;
   object-fit: cover;
   border: 3px solid #fffc00;
+  /* Performance optimizations */
+  contain: layout style paint;
+  will-change: auto;
 }
 
 .profile-info {
@@ -404,6 +407,14 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.5rem;
+  opacity: 1;
+  transition: opacity 0.2s ease-in-out;
+  contain: layout style;
+  content-visibility: auto;
+}
+
+.content-grid.loading {
+  opacity: 0.6;
 }
 
 .content-tile {
@@ -412,6 +423,8 @@ body {
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s, box-shadow 0.2s;
+  contain: layout style paint;
+  content-visibility: auto;
 }
 
 .content-tile:hover {
@@ -423,6 +436,9 @@ body {
   width: 100%;
   height: 200px;
   object-fit: cover;
+  /* Performance optimizations */
+  contain: layout style paint;
+  aspect-ratio: 16/9;
 }
 
 .tile-content {
@@ -568,6 +584,101 @@ body {
 
 .legal-links a:hover {
   color: #000000;
+}
+
+/* Story tile styles for Stories tab */
+.story-tile {
+  background: linear-gradient(135deg, #fffc00 0%, #ff6b6b 100%);
+  border: none;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  font-weight: bold;
+}
+
+.story-tile .tile-content {
+  text-align: center;
+  padding: 1rem;
+}
+
+.story-tile .tile-user {
+  color: #000;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.story-tile .tile-description {
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Loading spinner */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  grid-column: 1 / -1;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f4f6;
+  border-top: 3px solid #fffc00;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Empty message */
+.empty-message {
+  text-align: center;
+  padding: 2rem;
+  color: #656565;
+  font-size: 0.875rem;
+  grid-column: 1 / -1;
+}
+
+/* Image placeholder for failed images */
+.image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  color: #9ca3af;
+  font-size: 2rem;
+}
+
+/* Accessibility improvements */
+.content-tile:focus {
+  outline: 2px solid #fffc00;
+  outline-offset: 2px;
+}
+
+.tab-button:focus {
+  outline: 2px solid #fffc00;
+  outline-offset: 2px;
 }
 
 /* Responsive Design */

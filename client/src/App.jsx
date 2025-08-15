@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import './App.css'
-import Tabs from './Tabs'
+
+// Lazy load the Tabs component to reduce initial bundle size
+const Tabs = lazy(() => import('./Tabs'))
 
 function App() {
   const params = new URLSearchParams(window.location.search)
@@ -13,14 +15,33 @@ function App() {
   useEffect(() => {
     if (!username) return
     setLoading(true)
-    fetch(`/snap/@${username}?locale=en-US`)
+    
+    // Use AbortController for better performance and cleanup
+    const abortController = new AbortController()
+    
+    fetch(`/snap/@${username}?locale=en-US`, {
+      signal: abortController.signal,
+      headers: {
+        'Cache-Control': 'public, max-age=300' // 5 minute cache
+      }
+    })
       .then((res) => res.text())
       .then((html) => {
         const parser = new DOMParser()
         const doc = parser.parseFromString(html, 'text/html')
         const title = doc.querySelector('meta[property="og:title"]')?.content
         const description = doc.querySelector('meta[property="og:description"]')?.content
-        const image = doc.querySelector('meta[property="og:image"]')?.content
+        
+        // Try to get the working profile image from srcset first, then fallback to og:image
+        let image = doc.querySelector('meta[property="og:image"]')?.content
+        const profileImg = doc.querySelector('img[alt="Profile Picture"]')
+        if (profileImg?.srcset) {
+          // Extract the URL from srcset (format: "url size")
+          const srcsetUrl = profileImg.srcset.split(' ')[0]
+          if (srcsetUrl && srcsetUrl.startsWith('https://')) {
+            image = srcsetUrl
+          }
+        }
         const nextData = doc.getElementById('__NEXT_DATA__')?.textContent
         let subscriberCount, bio, userType
         if (nextData) {
@@ -47,14 +68,25 @@ function App() {
               const subcategory = profile.subcategoryStringId.replace('public-profile-subcategory-v3-', '')
               userType = subcategory.charAt(0).toUpperCase() + subcategory.slice(1)
             }
-          } catch (e) {
-            // ignore JSON parse errors
+          } catch (err) {
+            // Log error in development for debugging
+            if (import.meta.env.DEV) {
+              console.warn('Failed to parse Next.js data:', err)
+            }
           }
         }
         setData({ title, description, image, subscriberCount, bio, userType })
       })
-      .catch((err) => setError(err))
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setError(err)
+        }
+      })
       .finally(() => setLoading(false))
+    
+    return () => {
+      abortController.abort()
+    }
   }, [username])
 
   if (!username) {
@@ -69,7 +101,7 @@ function App() {
       {/* Left Sidebar - Login */}
       <div className="login-sidebar">
         <div className="login-form">
-          <h2>Log in to Snapchat</h2>
+          <h1>Log in to Snapchat</h1>
           <p className="subtitle">Chat, Snap, and video call your friends. Watch Stories and Spotlight, all from your computer.</p>
           
           <div className="login-field">
@@ -127,13 +159,22 @@ function App() {
         {/* Profile Section */}
         <div className="profile-section">
           {data?.image && (
-            <img src={data.image} alt="Profile Picture" className="profile-image" />
+            <img 
+              src={data.image} 
+              alt="Profile Picture" 
+              className="profile-image" 
+              width="120" 
+              height="120"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
+            />
           )}
           
           <div className="profile-info">
             <div className="profile-header">
               <div>
-                <h1 className="profile-name">{data?.title || 'Loading...'}</h1>
+                <h2 className="profile-name">{data?.title || 'Loading...'}</h2>
               </div>
               <button className="share-btn">
                 <span>📤</span> Share
@@ -162,7 +203,14 @@ function App() {
 
         {/* Content Area */}
         <div className="content-area">
-          <Tabs username={username} displayName={data?.title} />
+          <Suspense fallback={
+            <div className="loading-container">
+              <div className="spinner"></div>
+              <span className="sr-only">Loading content...</span>
+            </div>
+          }>
+            <Tabs username={username} displayName={data?.title} />
+          </Suspense>
         </div>
 
         {/* Footer */}

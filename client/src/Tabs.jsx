@@ -1,165 +1,144 @@
-import { useEffect, useState } from 'react'
-import Spotlight from './Spotlight'
-import Stories from './Stories'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 
-export default function Tabs({ username, displayName }) {
+// Loading spinner component
+const LoadingSpinner = ({ tabType }) => (
+  <div className="loading-container" aria-live="polite">
+    <div className="spinner" aria-hidden="true"></div>
+    <span className="sr-only">Loading {tabType} content...</span>
+  </div>
+)
+
+export default function Tabs({ username }) {
   const [items, setItems] = useState([])
-  const [activeTab, setActiveTab] = useState('spotlight')
-  const [availableTabs, setAvailableTabs] = useState(new Set(['spotlight', 'lenses', 'tagged', 'related']))
+  const [activeTab, setActiveTab] = useState('stories') // Default to stories first like real Snapchat
+  const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
+  const [loading, setLoading] = useState(false)
+  const tabRefs = useRef({})
+  const requestIdRef = useRef(0)
 
-  useEffect(() => {
-    if (!username) return
-    checkAllTabsForContent()
-  }, [username])
+  // Handle tile activation (click/keyboard)
+  const handleTileActivate = useCallback((item) => {
+    // For now, just log the interaction (could be extended to open modals, navigate, etc.)
+    if (import.meta.env.DEV) {
+      console.log('Tile activated:', item)
+    }
+    // Future: Could implement navigation, modal opening, etc.
+  }, [])
 
-  useEffect(() => {
-    if (!username || !availableTabs.has(activeTab)) return
-    fetchTabContent(activeTab)
-  }, [username, activeTab, availableTabs])
-
-  async function checkAllTabsForContent() {
-    // First, get the actual tabs from the real Snapchat page
-    const realTabs = await parseTabsFromRealPage()
-    const tabsWithContent = new Set()
+  const checkAllTabsForContentCallback = useCallback(async () => {
+    // Use a more performance-friendly approach: assume common tabs exist and validate lazily
+    const commonTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
+    setAvailableTabs(new Set(commonTabs))
     
-    // Only check tabs that actually exist on the real page
-    for (const tab of realTabs) {
-      const hasContent = await checkTabHasContent(tab)
-      if (hasContent) {
-        tabsWithContent.add(tab)
+    // Don't block the main thread - check tabs in background after initial render
+    setTimeout(async () => {
+      try {
+        const realTabs = await parseTabsFromRealPage()
+        const tabsWithContent = new Set()
+        
+        // Check tabs in parallel instead of sequential
+        const contentChecks = realTabs.map(async (tab) => {
+          const hasContent = await checkTabHasContent(tab)
+          return { tab, hasContent }
+        })
+        
+        const results = await Promise.all(contentChecks)
+        results.forEach(({ tab, hasContent }) => {
+          if (hasContent) {
+            tabsWithContent.add(tab)
+          }
+        })
+        
+        setAvailableTabs(tabsWithContent)
+        
+        // If current active tab has no content, switch to first available tab
+        if (!tabsWithContent.has(activeTab)) {
+          const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
+          if (firstAvailable) {
+            setActiveTab(firstAvailable)
+          }
+        }
+      } catch (error) {
+        // Keep the common tabs if validation fails
+        if (import.meta.env.DEV) {
+          console.warn('Tab validation failed, using common tabs:', error)
+        }
       }
-    }
+    }, 100) // Small delay to not block initial render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username]) // Only depend on username to avoid circular dependencies with internal functions
+
+  const fetchTabContentCallback = useCallback(async (tab) => {
+    const reqId = ++requestIdRef.current
+    // Start loading immediately but keep existing content visible
+    setLoading(true)
     
-    setAvailableTabs(tabsWithContent)
-    
-    // If current active tab has no content, switch to first available tab
-    if (!tabsWithContent.has(activeTab)) {
-      const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
-      if (firstAvailable) {
-        setActiveTab(firstAvailable)
-      }
-    }
-  }
-
-  async function parseTabsFromRealPage() {
-    try {
-      const res = await fetch(`/snap/@${username}?locale=en-US`)
-      const html = await res.text()
-      const doc = new DOMParser().parseFromString(html, 'text/html')
-      
-      const availableTabs = []
-      
-      // Check for actual tab navigation elements in the UI (this matches real Snapchat behavior)
-      // Look for tab buttons in the navigation
-      const tabElements = doc.querySelectorAll('button[role="tab"], [role="tablist"] button, button[aria-selected]')
-      
-      for (const tabElement of tabElements) {
-        const tabText = tabElement.textContent?.trim().toLowerCase()
-        if (tabText === 'spotlight') availableTabs.push('spotlight')
-        else if (tabText === 'lenses') availableTabs.push('lenses')
-        else if (tabText === 'tagged') availableTabs.push('tagged')
-        else if (tabText === 'related') availableTabs.push('related')
-      }
-      
-      // Fallback: if no tab navigation found, look for tab-specific content
-      if (availableTabs.length === 0) {
-        console.log('No tab navigation found, falling back to content detection')
-        if (await hasContentForTab('spotlight')) availableTabs.push('spotlight')
-        if (await hasContentForTab('lenses')) availableTabs.push('lenses') 
-        if (await hasContentForTab('tagged')) availableTabs.push('tagged')
-        if (await hasContentForTab('related')) availableTabs.push('related')
-      }
-      
-      console.log(`Real tabs found for ${username}:`, availableTabs)
-      return availableTabs
-    } catch (error) {
-      console.error('Error parsing real tabs:', error)
-      return []
-    }
-  }
-
-  async function hasContentForTab(tab) {
-    try {
-      let url, selector
-      
-      switch (tab) {
-        case 'spotlight':
-          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
-          selector = 'a[href*="/spotlight/"] img'
-          break
-        case 'lenses':
-          url = `/snap/@${username}?locale=en-US&tab=Lenses`
-          selector = 'a[href*="/unlock/"] img'
-          break
-        case 'tagged':
-          url = `/snap/@${username}?locale=en-US&tab=Tagged`
-          selector = 'a[href*="/spotlight/"] img'
-          break
-        case 'related':
-          url = `/snap/@${username}?locale=en-US`
-          selector = 'a[href*="/add/"] h5'
-          break
-        default:
-          return false
-      }
-
-      const res = await fetch(url)
-      const html = await res.text()
-      const doc = new DOMParser().parseFromString(html, 'text/html')
-      const elements = doc.querySelectorAll(selector)
-      
-      return elements.length > 0
-    } catch (error) {
-      return false
-    }
-  }
-
-  async function checkTabHasContent(tab) {
-    try {
-      // Simple selector-based check for content existence
-      // Since parseTabsFromRealPage already confirmed the tab exists,
-      // we just need to verify it has actual content items
-      let url, selector
-      
-      switch (tab) {
-        case 'spotlight':
-          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
-          selector = 'a[href*="/spotlight/"] img'
-          break
-        case 'lenses':
-          url = `/snap/@${username}?locale=en-US&tab=Lenses`
-          selector = 'a[href*="/unlock/"] img'
-          break
-        case 'tagged':
-          url = `/snap/@${username}?locale=en-US&tab=Tagged`
-          selector = 'a[href*="/spotlight/"] img, script[type="application/ld+json"]'
-          break
-        case 'related':
-          url = `/snap/@${username}?locale=en-US`
-          selector = 'a[href*="/add/"] h5'
-          break
-        default:
-          return false
-      }
-
-      const res = await fetch(url)
-      const html = await res.text()
-      const doc = new DOMParser().parseFromString(html, 'text/html')
-      const elements = doc.querySelectorAll(selector)
-      
-      return elements.length > 0
-    } catch (error) {
-      console.error(`Error checking content for ${tab}:`, error)
-      return false
-    }
-  }
-
-  async function fetchTabContent(tab) {
     try {
       let url, selector, dataMapper
       
       switch (tab) {
+        case 'stories':
+          url = `/snap/@${username}?locale=en-US&tab=Stories`
+          // Look for story containers that have both images and titles
+          selector = 'a[href*="/story/"], [data-testid*="story"], div[class*="story"] img, div[class*="Story"] img'
+          dataMapper = (element) => {
+            let storyTitle = ''
+            let thumbnailUrl = null
+            
+            // If it's a link, extract title and look for image
+            if (element.tagName === 'A') {
+              storyTitle = element.textContent?.trim() || ''
+              const img = element.querySelector('img')
+              if (img) {
+                thumbnailUrl = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy')
+              }
+            }
+            // If it's an image, look for nearby title
+            else if (element.tagName === 'IMG') {
+              thumbnailUrl = element.src || element.getAttribute('data-src') || element.getAttribute('data-lazy')
+              
+              // Look for title in parent containers
+              let container = element.closest('div, a, article')
+              for (let i = 0; i < 3 && container; i++) {
+                const titleElement = container.querySelector('h1, h2, h3, h4, h5, h6, p, span')
+                if (titleElement?.textContent?.trim()) {
+                  storyTitle = titleElement.textContent.trim()
+                  break
+                }
+                container = container.parentElement
+              }
+            }
+            
+            // Fallback: look for any h5 elements (original approach) if no image found
+            if (!thumbnailUrl && element.tagName === 'H5') {
+              storyTitle = element.textContent?.trim() || ''
+            }
+            
+            // Skip empty or very short titles
+            if (!storyTitle || storyTitle.length < 3) {
+              return null
+            }
+            
+            // Filter out common UI elements or sort options
+            if (storyTitle.toLowerCase().includes('recent') || storyTitle.toLowerCase().includes('sort')) {
+              return null
+            }
+            
+            // Generate a fallback thumbnail using a reliable placeholder
+            if (!thumbnailUrl) {
+              // Use a reliable placeholder service instead of potentially non-existent URLs
+              thumbnailUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(storyTitle.slice(0, 2))}&background=fffc00&color=000&size=200`
+            }
+            
+            return {
+              thumbnail: thumbnailUrl,
+              user: username,
+              description: storyTitle,
+              isStory: true
+            }
+          }
+          break
         case 'spotlight':
           url = `/snap/@${username}?locale=en-US&tab=Spotlight`
           selector = 'a[href*="/spotlight/"]' // Links to individual spotlight videos  
@@ -213,7 +192,7 @@ export default function Tabs({ username, displayName }) {
                   }
                 }
                 return null
-              } catch (e) {
+              } catch {
                 return null
               }
             }
@@ -261,32 +240,37 @@ export default function Tabs({ username, displayName }) {
             const usernameMatch = addLink.match(/\/add\/([^?]+)/)
             if (!usernameMatch) return null
             
-            const relatedUsername = usernameMatch[1]
+            const _relatedUsername = usernameMatch[1]
             
             // Extract name and image from the element
             const nameElement = element.querySelector('h5')
             const imageElement = element.querySelector('img')
             const paragraphElement = element.querySelector('p')
             
-            console.log(`Mapping element for ${relatedUsername}:`, {
-              hasName: !!nameElement,
-              hasImage: !!imageElement,
-              name: nameElement?.textContent.trim(),
-              imageSrc: imageElement?.src
-            })
+            // Debug logging removed for cleaner production code
             
             if (!nameElement) return null
             
-            // Get thumbnail URL - try multiple sources and fallback to Snapchat standard URL
+            // Get thumbnail URL - try to extract working CDN URL from srcset first
             let thumbnailUrl = null
             if (imageElement) {
-              thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
+              // Try to get working URL from srcset (same technique as main profile image)
+              if (imageElement.srcset) {
+                const srcsetUrl = imageElement.srcset.split(' ')[0]
+                if (srcsetUrl && srcsetUrl.startsWith('https://')) {
+                  thumbnailUrl = srcsetUrl
+                }
+              }
+              // Fallback to other image attributes
+              if (!thumbnailUrl) {
+                thumbnailUrl = imageElement.src || imageElement.getAttribute('data-src') || imageElement.getAttribute('data-lazy')
+              }
             }
             
-            // If no image found, generate fallback using Snapchat's Bitmoji/avatar service
+            // If no image found, generate fallback using a reliable avatar service
             if (!thumbnailUrl || thumbnailUrl === '') {
-              // Use Snapchat's web capture API for profile previews (similar to og:image)
-              thumbnailUrl = `https://us-east1-aws.api.snapchat.com/web-capture/www.snapchat.com/add/${relatedUsername}/preview/square.jpeg?xp_id=1`
+              // Use a reliable public avatar service instead of internal Snapchat APIs
+              thumbnailUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameElement.textContent.trim())}&background=random&size=120`
             }
             
             return {
@@ -302,13 +286,16 @@ export default function Tabs({ username, displayName }) {
       }
 
       const res = await fetch(url)
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${tab} (${res.status})`)
+      }
       const html = await res.text()
       const doc = new DOMParser().parseFromString(html, 'text/html')
       
       const elements = [...doc.querySelectorAll(selector)]
       
       // Debug logging for Related tab
-      if (tab === 'related') {
+      if (tab === 'related' && import.meta.env.DEV) {
         console.log(`Related tab debug: Found ${elements.length} elements with selector ${selector}`)
         elements.slice(0, 5).forEach((el, i) => {
           console.log(`Element ${i}:`, el.href, el.textContent?.slice(0, 50))
@@ -323,8 +310,13 @@ export default function Tabs({ username, displayName }) {
           return !!item.user
         }
         
+        // For story tiles, only require user and description (no thumbnails)
+        if (item.isStory) {
+          return !!(item.user && item.description)
+        }
+        
         // For content tiles, require both thumbnail and user name 
-        if (!item.isProfile) {
+        if (!item.isProfile && !item.isStory) {
           return !!(item.thumbnail && item.user)
         }
         
@@ -344,16 +336,171 @@ export default function Tabs({ username, displayName }) {
         })
       }
       
-      
-      setItems(data)
+      if (requestIdRef.current === reqId) {
+        setItems(data)
+      }
     } catch (error) {
       console.error(`Error fetching ${tab} content:`, error)
-      setItems([])
+      // Keep existing items visible on error
+    } finally {
+      if (requestIdRef.current === reqId) {
+        setLoading(false)
+      }
+    }
+  }, [username])
+
+  useEffect(() => {
+    if (!username) return
+    checkAllTabsForContentCallback()
+  }, [username, checkAllTabsForContentCallback])
+
+  useEffect(() => {
+    if (!username || !availableTabs.has(activeTab)) return
+    fetchTabContentCallback(activeTab)
+  }, [username, activeTab, availableTabs, fetchTabContentCallback])
+
+  async function parseTabsFromRealPage() {
+    try {
+      const res = await fetch(`/snap/@${username}?locale=en-US`)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      
+      const availableTabs = []
+      
+      // Look for the actual tablist structure used by real Snapchat
+      // Real Snapchat uses: tablist > tab elements with button children containing heading elements
+      const tablist = doc.querySelector('[role="tablist"]')
+      if (tablist) {
+        const tabElements = tablist.querySelectorAll('[role="tab"]')
+        
+        for (const tabElement of tabElements) {
+          // Extract tab name from heading element inside the tab button
+          const heading = tabElement.querySelector('h5, h6, button h5, button h6')
+          const tabText = heading?.textContent?.trim().toLowerCase()
+          
+          if (import.meta.env.DEV) {
+            console.log(`Found tab element with text: "${tabText}"`);
+          }
+          
+          if (tabText === 'stories') availableTabs.push('stories')
+          else if (tabText === 'spotlight') availableTabs.push('spotlight')
+          else if (tabText === 'lenses') availableTabs.push('lenses')
+          else if (tabText === 'tagged') availableTabs.push('tagged')
+          else if (tabText === 'related') availableTabs.push('related')
+        }
+      }
+      
+      // Fallback: if no tablist found, look for tab-specific content
+      if (availableTabs.length === 0) {
+        if (import.meta.env.DEV) {
+          console.log('No tablist found, falling back to content detection');
+        }
+        if (await hasContentForTab('stories')) availableTabs.push('stories')
+        if (await hasContentForTab('spotlight')) availableTabs.push('spotlight')
+        if (await hasContentForTab('lenses')) availableTabs.push('lenses') 
+        if (await hasContentForTab('tagged')) availableTabs.push('tagged')
+        if (await hasContentForTab('related')) availableTabs.push('related')
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`Real tabs found for ${username}:`, availableTabs);
+      }
+      return availableTabs
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error parsing real tabs:', error);
+      }
+      return []
+    }
+  }
+
+  async function hasContentForTab(tab) {
+    try {
+      let url, selector
+      
+      switch (tab) {
+        case 'stories':
+          url = `/snap/@${username}?locale=en-US&tab=Stories`
+          selector = 'tabpanel h5, [role="tabpanel"] h5'
+          break
+        case 'spotlight':
+          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
+          selector = 'a[href*="/spotlight/"] img'
+          break
+        case 'lenses':
+          url = `/snap/@${username}?locale=en-US&tab=Lenses`
+          selector = 'a[href*="/unlock/"] img'
+          break
+        case 'tagged':
+          url = `/snap/@${username}?locale=en-US&tab=Tagged`
+          selector = 'a[href*="/spotlight/"] img'
+          break
+        case 'related':
+          url = `/snap/@${username}?locale=en-US`
+          selector = 'a[href*="/add/"] h5'
+          break
+        default:
+          return false
+      }
+
+      const res = await fetch(url)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const elements = doc.querySelectorAll(selector)
+      
+      return elements.length > 0
+    } catch {
+      return false
+    }
+  }
+
+  async function checkTabHasContent(tab) {
+    try {
+      // Simple selector-based check for content existence
+      // Since parseTabsFromRealPage already confirmed the tab exists,
+      // we just need to verify it has actual content items
+      let url, selector
+      
+      switch (tab) {
+        case 'stories':
+          url = `/snap/@${username}?locale=en-US&tab=Stories`
+          selector = 'tabpanel h5, [role="tabpanel"] h5'
+          break
+        case 'spotlight':
+          url = `/snap/@${username}?locale=en-US&tab=Spotlight`
+          selector = 'a[href*="/spotlight/"] img'
+          break
+        case 'lenses':
+          url = `/snap/@${username}?locale=en-US&tab=Lenses`
+          selector = 'a[href*="/unlock/"] img'
+          break
+        case 'tagged':
+          url = `/snap/@${username}?locale=en-US&tab=Tagged`
+          selector = 'a[href*="/spotlight/"] img, script[type="application/ld+json"]'
+          break
+        case 'related':
+          url = `/snap/@${username}?locale=en-US`
+          selector = 'a[href*="/add/"] h5'
+          break
+        default:
+          return false
+      }
+
+      const res = await fetch(url)
+      const html = await res.text()
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const elements = doc.querySelectorAll(selector)
+      
+      return elements.length > 0
+    } catch (error) {
+      console.error(`Error checking content for ${tab}:`, error)
+      return false
     }
   }
 
   const getTabTitle = (tab) => {
     const tabTitles = {
+      stories: 'Stories',
       spotlight: 'Spotlight results',
       lenses: 'Lenses',
       tagged: 'Tagged content',
@@ -362,38 +509,161 @@ export default function Tabs({ username, displayName }) {
     return tabTitles[tab]
   }
 
+  const handleTabKeyDown = (event, tab) => {
+    const availableTabsArray = Array.from(availableTabs)
+    const currentIndex = availableTabsArray.indexOf(tab)
+    
+    switch (event.key) {
+      case 'ArrowLeft': {
+        event.preventDefault()
+        const prevTab = availableTabsArray[currentIndex - 1]
+        if (prevTab) {
+          setActiveTab(prevTab)
+          tabRefs.current[prevTab]?.focus()
+        }
+        break
+      }
+      case 'ArrowRight': {
+        event.preventDefault()
+        const nextTab = availableTabsArray[currentIndex + 1]
+        if (nextTab) {
+          setActiveTab(nextTab)
+          tabRefs.current[nextTab]?.focus()
+        }
+        break
+      }
+      case 'Home': {
+        event.preventDefault()
+        const firstTab = availableTabsArray[0]
+        if (firstTab) {
+          setActiveTab(firstTab)
+          tabRefs.current[firstTab]?.focus()
+        }
+        break
+      }
+      case 'End': {
+        event.preventDefault()
+        const lastTab = availableTabsArray[availableTabsArray.length - 1]
+        if (lastTab) {
+          setActiveTab(lastTab)
+          tabRefs.current[lastTab]?.focus()
+        }
+        break
+      }
+    }
+  }
+
+  // Optimized image component with better error handling and loading states
+  const OptimizedImage = ({ src, alt, className, loading = "lazy", sizes, width, height }) => {
+    const [imgError, setImgError] = useState(false)
+    
+    if (imgError || !src) {
+      return (
+        <div 
+          className={`${className} image-placeholder`} 
+          role="img"
+          aria-label={alt}
+          style={{ width: width || '100%', height: height || '200px' }}
+        >
+          <span>📷</span>
+        </div>
+      )
+    }
+    
+    return (
+      <img 
+        src={src}
+        alt={alt}
+        className={className}
+        loading={loading}
+        sizes={sizes}
+        width={width}
+        height={height}
+        onError={() => setImgError(true)}
+        decoding="async"
+        style={{ 
+          contain: 'layout style paint',
+          contentVisibility: 'auto'
+        }}
+      />
+    )
+  }
+
   return (
     <div className="spotlight-content">
       {/* Tab Navigation */}
-      <div className="tab-navigation">
+      <div className="tab-navigation" role="tablist" aria-label="Profile content tabs">
+        {availableTabs.has('stories') && (
+          <button 
+            ref={el => tabRefs.current['stories'] = el}
+            className={`tab-button ${activeTab === 'stories' ? 'active' : ''}`}
+            onClick={() => setActiveTab('stories')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'stories')}
+            role="tab"
+            aria-selected={activeTab === 'stories'}
+            aria-controls="stories-panel"
+            id="stories-tab"
+            tabIndex={activeTab === 'stories' ? 0 : -1}
+          >
+            Stories
+          </button>
+        )}
         {availableTabs.has('spotlight') && (
           <button 
+            ref={el => tabRefs.current['spotlight'] = el}
             className={`tab-button ${activeTab === 'spotlight' ? 'active' : ''}`}
             onClick={() => setActiveTab('spotlight')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'spotlight')}
+            role="tab"
+            aria-selected={activeTab === 'spotlight'}
+            aria-controls="spotlight-panel"
+            id="spotlight-tab"
+            tabIndex={activeTab === 'spotlight' ? 0 : -1}
           >
             Spotlight
           </button>
         )}
         {availableTabs.has('lenses') && (
           <button 
+            ref={el => tabRefs.current['lenses'] = el}
             className={`tab-button ${activeTab === 'lenses' ? 'active' : ''}`}
             onClick={() => setActiveTab('lenses')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'lenses')}
+            role="tab"
+            aria-selected={activeTab === 'lenses'}
+            aria-controls="lenses-panel"
+            id="lenses-tab"
+            tabIndex={activeTab === 'lenses' ? 0 : -1}
           >
             Lenses
           </button>
         )}
         {availableTabs.has('tagged') && (
           <button 
+            ref={el => tabRefs.current['tagged'] = el}
             className={`tab-button ${activeTab === 'tagged' ? 'active' : ''}`}
             onClick={() => setActiveTab('tagged')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'tagged')}
+            role="tab"
+            aria-selected={activeTab === 'tagged'}
+            aria-controls="tagged-panel"
+            id="tagged-tab"
+            tabIndex={activeTab === 'tagged' ? 0 : -1}
           >
             Tagged
           </button>
         )}
         {availableTabs.has('related') && (
           <button 
+            ref={el => tabRefs.current['related'] = el}
             className={`tab-button ${activeTab === 'related' ? 'active' : ''}`}
             onClick={() => setActiveTab('related')}
+            onKeyDown={(e) => handleTabKeyDown(e, 'related')}
+            role="tab"
+            aria-selected={activeTab === 'related'}
+            aria-controls="related-panel"
+            id="related-tab"
+            tabIndex={activeTab === 'related' ? 0 : -1}
           >
             Related
           </button>
@@ -402,50 +672,85 @@ export default function Tabs({ username, displayName }) {
 
       {/* Sort Filter */}
       <div className="sort-filter">
-        <span className="sort-label">Sort by:</span>
+        <span>Sort by:</span>
         <button className="sort-button">
-          <span>Recent</span>
+          Recent
           <span className="sort-arrow">▼</span>
         </button>
       </div>
-      
-      <div className="content-grid">
+
+      {/* Content Grid */}
+      <div 
+        className={`content-grid ${loading ? 'loading' : ''}`}
+        role="tabpanel" 
+        aria-labelledby={`${activeTab}-tab`}
+        id={`${activeTab}-panel`}
+      >
+        {!loading && items.length === 0 && (
+          <div className="empty-message" role="status" aria-live="polite" aria-atomic="true">
+            No {getTabTitle(activeTab).toLowerCase()} available for this profile.
+          </div>
+        )}
         {items.map((item, index) => (
-          <div key={index} className={`content-tile ${item.isProfile ? 'profile-tile' : ''}`}>
+          <article 
+            key={index} 
+            className={`content-tile ${item.isProfile ? 'profile-tile' : ''} ${item.isStory ? 'story-tile' : ''}`} 
+            tabIndex="0" 
+            role="button" 
+            aria-label={item.isProfile ? `View profile of ${item.user}` : item.isStory ? `View story: ${item.description}` : `View content by ${item.user}`}
+            onClick={() => handleTileActivate(item)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleTileActivate(item)
+              }
+            }}
+          >
             {item.thumbnail && (
-              <img src={item.thumbnail} alt="" className={item.isProfile ? "profile-image" : "tile-image"} />
+              <OptimizedImage
+                src={item.thumbnail} 
+                alt={item.isProfile 
+                  ? `Profile picture of ${item.user}` 
+                  : `Thumbnail image for ${item.description || 'content'} by ${item.user}`
+                } 
+                className={item.isProfile ? "profile-image" : "tile-image"} 
+                loading="lazy"
+                sizes="(max-width: 768px) 33vw, 25vw"
+                width={item.isProfile ? "60" : "280"}
+                height={item.isProfile ? "60" : "200"}
+              />
             )}
             <div className="tile-content">
               {item.user && (
-                <div className="tile-user">{item.user}</div>
+                <h4 className="tile-user">{item.user}</h4>
               )}
               {item.description && (
-                <div className="tile-description">{item.description}</div>
+                <p className="tile-description">{item.description}</p>
               )}
-              {!item.isProfile && (
+              {(item.views || item.comments || item.shares) && (
                 <div className="tile-stats">
                   {item.views && (
                     <span className="stat-item">
-                      <span>❤️</span>
-                      <span>{item.views}</span>
+                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff0050'%3E%3Cpath d='M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z'/%3E%3C/svg%3E" alt="Views" width="16" height="16" />
+                      {item.views}
                     </span>
                   )}
                   {item.comments && (
                     <span className="stat-item">
-                      <span>💬</span>
-                      <span>{item.comments}</span>
+                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h11c.55 0 1-.45 1-1z'/%3E%3C/svg%3E" alt="Comments" width="16" height="16" />
+                      {item.comments}
                     </span>
                   )}
                   {item.shares && (
                     <span className="stat-item">
-                      <span>🔗</span>
-                      <span>{item.shares}</span>
+                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z'/%3E%3C/svg%3E" alt="Shares" width="16" height="16" />
+                      {item.shares}
                     </span>
                   )}
                 </div>
               )}
             </div>
-          </div>
+          </article>
         ))}
       </div>
     </div>
