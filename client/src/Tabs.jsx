@@ -1,5 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import './App.css'
+
+// Debounce utility to reduce API calls
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+    
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
+  
+  return debouncedValue
+}
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -524,13 +541,17 @@ export default function Tabs({ username, displayName }) {
   }
 
   // Optimized image component with better error handling and loading states
-  const OptimizedImage = ({ src, alt, className, loading = "lazy", sizes }) => {
+  const OptimizedImage = ({ src, alt, className, loading = "lazy", sizes, width, height }) => {
     const [imgError, setImgError] = useState(false)
     const [imgLoading, setImgLoading] = useState(true)
     
     if (imgError || !src) {
       return (
-        <div className={`${className} image-placeholder`} aria-label={alt}>
+        <div 
+          className={`${className} image-placeholder`} 
+          aria-label={alt}
+          style={{ width: width || '100%', height: height || '200px' }}
+        >
           <span>📷</span>
         </div>
       )
@@ -543,9 +564,12 @@ export default function Tabs({ username, displayName }) {
         className={className}
         loading={loading}
         sizes={sizes}
+        width={width}
+        height={height}
         onError={() => setImgError(true)}
         onLoad={() => setImgLoading(false)}
         style={{ opacity: imgLoading ? 0.5 : 1 }}
+        decoding="async"
       />
     )
   }
@@ -664,6 +688,8 @@ export default function Tabs({ username, displayName }) {
                 className={item.isProfile ? "profile-image" : "tile-image"} 
                 loading="lazy"
                 sizes="(max-width: 768px) 33vw, 25vw"
+                width={item.isProfile ? "60" : "280"}
+                height={item.isProfile ? "60" : "200"}
               />
             )}
             <div className="tile-content">

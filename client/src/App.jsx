@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import './App.css'
-import Tabs from './Tabs'
+
+// Lazy load the Tabs component to reduce initial bundle size
+const Tabs = lazy(() => import('./Tabs'))
 
 function App() {
   const params = new URLSearchParams(window.location.search)
@@ -137,7 +139,16 @@ function App() {
         {/* Profile Section */}
         <div className="profile-section">
           {data?.image && (
-            <img src={data.image} alt="Profile Picture" className="profile-image" />
+            <img 
+              src={data.image} 
+              alt="Profile Picture" 
+              className="profile-image" 
+              width="120" 
+              height="120"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
+            />
           )}
           
           <div className="profile-info">
@@ -172,7 +183,14 @@ function App() {
 
         {/* Content Area */}
         <div className="content-area">
-          <Tabs username={username} displayName={data?.title} />
+          <Suspense fallback={
+            <div className="loading-container">
+              <div className="spinner"></div>
+              <span className="sr-only">Loading content...</span>
+            </div>
+          }>
+            <Tabs username={username} displayName={data?.title} />
+          </Suspense>
         </div>
 
         {/* Footer */}
