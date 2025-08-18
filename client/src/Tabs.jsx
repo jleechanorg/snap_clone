@@ -11,7 +11,7 @@ const LoadingSpinner = ({ tabType }) => (
 
 export default function Tabs({ username }) {
   const [items, setItems] = useState([])
-  const [activeTab, setActiveTab] = useState('stories') // Default to stories first like real Snapchat
+  const [activeTab, setActiveTab] = useState('spotlight') // Default to spotlight which has most content
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
   const tabRefs = useRef({})
@@ -26,53 +26,52 @@ export default function Tabs({ username }) {
     // Future: Could implement navigation, modal opening, etc.
   }, [])
 
-  const checkAllTabsForContentCallback = useCallback(async () => {
-    // Use a more performance-friendly approach: assume common tabs exist and validate lazily
-    const commonTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
-    setAvailableTabs(new Set(commonTabs))
+  const checkAllTabsForContentCallback = useCallback(() => {
+    // Performance-first approach: show static tabs immediately, no validation on initial load
+    const staticTabs = ['stories', 'spotlight', 'lenses', 'tagged', 'related']
+    setAvailableTabs(new Set(staticTabs))
     
-    // Don't block the main thread - check tabs in background after initial render
-    setTimeout(async () => {
-      try {
-        const realTabs = await parseTabsFromRealPage()
-        const tabsWithContent = new Set()
-        
-        // Check tabs in parallel instead of sequential
-        const contentChecks = realTabs.map(async (tab) => {
-          const hasContent = await checkTabHasContent(tab)
-          return { tab, hasContent }
-        })
-        
-        const results = await Promise.all(contentChecks)
-        results.forEach(({ tab, hasContent }) => {
-          if (hasContent) {
-            tabsWithContent.add(tab)
+    // Only validate tabs in background using requestIdleCallback to avoid blocking main thread
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(async () => {
+        try {
+          // This runs during browser idle time, not during critical rendering
+          const realTabs = await parseTabsFromRealPage()
+          const tabsWithContent = new Set()
+          
+          // Check tabs one by one with delays to avoid blocking
+          for (const tab of realTabs) {
+            // Use setTimeout to yield to main thread between requests
+            await new Promise(resolve => setTimeout(resolve, 50))
+            const hasContent = await checkTabHasContent(tab)
+            if (hasContent) {
+              tabsWithContent.add(tab)
+            }
           }
-        })
-        
-        setAvailableTabs(tabsWithContent)
-        
-        // If current active tab has no content, switch to first available tab
-        if (!tabsWithContent.has(activeTab)) {
-          const firstAvailable = realTabs.find(tab => tabsWithContent.has(tab))
-          if (firstAvailable) {
-            setActiveTab(firstAvailable)
+          
+          // Only update if we found different tabs than default
+          if (
+            !staticTabs.every(tab => tabsWithContent.has(tab)) ||
+            tabsWithContent.size !== staticTabs.length
+          ) {
+            setAvailableTabs(tabsWithContent)
+          }
+        } catch (error) {
+          // Silently fail and keep static tabs - performance over perfect accuracy
+          if (import.meta.env.DEV) {
+            console.warn('Background tab validation failed:', error)
           }
         }
-      } catch (error) {
-        // Keep the common tabs if validation fails
-        if (import.meta.env.DEV) {
-          console.warn('Tab validation failed, using common tabs:', error)
-        }
-      }
-    }, 100) // Small delay to not block initial render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username]) // Only depend on username to avoid circular dependencies with internal functions
+      }, { timeout: 5000 })
+    }
+  }, [username]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTabContentCallback = useCallback(async (tab) => {
     const reqId = ++requestIdRef.current
-    // Start loading immediately but keep existing content visible
+    // Show loading state immediately for user feedback
     setLoading(true)
+    
+    // Note: Active tab loads immediately, background tabs can be deferred
     
     try {
       let url, selector, dataMapper
@@ -141,17 +140,55 @@ export default function Tabs({ username }) {
           break
         case 'spotlight':
           url = `/snap/@${username}?locale=en-US&tab=Spotlight`
-          selector = 'a[href*="/spotlight/"]' // Links to individual spotlight videos  
-          dataMapper = (tile) => {
-            const linkText = tile.textContent?.trim() || ''
+          // Use broader selectors and JSON-LD data for better content capture
+          selector = 'script[type="application/ld+json"], a[href*="/spotlight/"], div[class*="SpotlightResultTile"], div[class*="tile"], article, .video-tile'
+          dataMapper = (element) => {
+            // Try JSON-LD structured data first (most reliable)
+            if (element.tagName === 'SCRIPT') {
+              try {
+                const data = JSON.parse(element.textContent)
+                
+                // Handle single VideoObject
+                if (data['@type'] === 'VideoObject') {
+                  return {
+                    thumbnail: data.thumbnailUrl,
+                    user: data.creator?.alternateName || data.creator?.name || username,
+                    description: data.name || data.description,
+                    views: data.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
+                    comments: null,
+                    shares: null
+                  }
+                }
+                
+                // Handle array of VideoObjects (Snapchat's format)
+                if (Array.isArray(data)) {
+                  // Return special marker to indicate this is an array that needs special processing
+                  return { _isVideoArray: true, _videoData: data }
+                }
+                
+                return null
+              } catch {
+                return null
+              }
+            }
+            
+            // Fallback to DOM parsing with improved selectors
+            const linkText = element.textContent?.trim() || ''
             const numbers = linkText.match(/\d+[kK]?/g) || []
             const [views, comments, shares] = numbers.slice(0, 3)
             
-            const user = tile.href?.match(/@([^/]+)/)?.[1]
-            const description = linkText.replace(/\d+[kK]?\s*/g, '').trim()
+            // Look for images in various possible locations
+            const img = element.querySelector('img') || 
+                       element.closest('div')?.querySelector('img') ||
+                       element.parentElement?.querySelector('img')
+            
+            const user = element.href?.match(/@([^/]+)/)?.[1] || username
+            const description = linkText.replace(/\d+[kK]?\s*/g, '').trim() || 
+                              element.getAttribute('aria-label') ||
+                              element.querySelector('p, span, div')?.textContent?.trim()
             
             return {
-              thumbnail: tile.querySelector('img')?.src,
+              thumbnail: img?.src || img?.getAttribute('data-src') || img?.getAttribute('data-lazy'),
               user: user,
               description: description,
               views: views,
@@ -315,13 +352,45 @@ export default function Tabs({ username }) {
           return !!(item.user && item.description)
         }
         
-        // For content tiles, require both thumbnail and user name 
+        // For content tiles, be more lenient - allow items with user OR description
         if (!item.isProfile && !item.isStory) {
-          return !!(item.thumbnail && item.user)
+          return !!(item.user || item.description)
         }
         
         return true
       })
+      
+      // Process video arrays from JSON-LD data (Snapchat's format)
+      const videoArrays = data.filter(item => item?._isVideoArray)
+      if (videoArrays.length > 0) {
+        const processedVideos = []
+        videoArrays.forEach(arrayItem => {
+          arrayItem._videoData.forEach(videoObj => {
+            if (videoObj['@type'] === 'VideoObject') {
+              processedVideos.push({
+                thumbnail: videoObj.thumbnailUrl,
+                user: videoObj.creator?.alternateName || videoObj.creator?.name || username,
+                description: videoObj.name || videoObj.description,
+                views: videoObj.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
+                comments: null,
+                shares: null
+              })
+            }
+          })
+        })
+        
+        // Replace array markers with processed videos and remove the markers
+        data = data.filter(item => !item?._isVideoArray).concat(processedVideos)
+      }
+      
+      // Debug logging for development
+      if (import.meta.env.DEV) {
+        console.log(`${tab} tab debug:`, {
+          elementsFound: elements.length,
+          validItemsAfterMapping: data.length,
+          sampleItems: data.slice(0, 3)
+        })
+      }
       
       // For Tagged tab, filter out entries that are from the profile owner to show diverse users
       if (tab === 'tagged') {
@@ -356,6 +425,8 @@ export default function Tabs({ username }) {
 
   useEffect(() => {
     if (!username || !availableTabs.has(activeTab)) return
+    
+    // Load active tab content immediately for responsiveness
     fetchTabContentCallback(activeTab)
   }, [username, activeTab, availableTabs, fetchTabContentCallback])
 
@@ -720,36 +791,30 @@ export default function Tabs({ username }) {
                 height={item.isProfile ? "60" : "200"}
               />
             )}
-            <div className="tile-content">
-              {item.user && (
-                <h4 className="tile-user">{item.user}</h4>
-              )}
-              {item.description && (
-                <p className="tile-description">{item.description}</p>
-              )}
-              {(item.views || item.comments || item.shares) && (
-                <div className="tile-stats">
+            {/* Snapchat-style overlay content wrapper - only for non-profile tiles */}
+            {!item.isProfile && (
+              <div className="spotlight-tile-overlay-content-wrapper">
+                <div className="tile-overlay">
                   {item.views && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff0050'%3E%3Cpath d='M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z'/%3E%3C/svg%3E" alt="Views" width="16" height="16" />
-                      {item.views}
-                    </span>
-                  )}
-                  {item.comments && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h11c.55 0 1-.45 1-1z'/%3E%3C/svg%3E" alt="Comments" width="16" height="16" />
-                      {item.comments}
-                    </span>
-                  )}
-                  {item.shares && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z'/%3E%3C/svg%3E" alt="Shares" width="16" height="16" />
-                      {item.shares}
-                    </span>
+                    <div className="view-count">
+                      👁 {item.views}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            
+            {/* Only show content for profile tiles (Related tab) */}
+            {item.isProfile && (
+              <div className="tile-content">
+                {item.user && (
+                  <h4 className="tile-user">{item.user}</h4>
+                )}
+                {item.description && (
+                  <p className="tile-description">{item.description}</p>
+                )}
+              </div>
+            )}
           </article>
         ))}
       </div>
