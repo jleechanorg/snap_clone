@@ -100,9 +100,9 @@ export default function ContentModal({ item, isOpen, onClose }) {
     return state
   }
   
-  // Extract video URL from Snapchat content
+  // Enhanced video URL extraction with sophisticated methods
   const getVideoUrl = async (snapchatUrl) => {
-    debugLog('EXTRACTION', 'Starting URL extraction', { snapchatUrl })
+    debugLog('EXTRACTION', 'Starting enhanced URL extraction', { snapchatUrl })
     
     setDebugState(prev => ({
       ...prev,
@@ -133,7 +133,15 @@ export default function ContentModal({ item, isOpen, onClose }) {
         const proxyUrl = snapchatUrl.replace('https://www.snapchat.com', '/snap')
         debugLog('EXTRACTION', 'Fetching via proxy', { proxyUrl })
         
-        const response = await fetch(proxyUrl)
+        const response = await fetch(proxyUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache'
+          }
+        })
+        
         const responseData = {
           status: response.status,
           statusText: response.statusText,
@@ -164,163 +172,444 @@ export default function ContentModal({ item, isOpen, onClose }) {
         
         const doc = new DOMParser().parseFromString(html, 'text/html')
         const extractionResults = {}
-        
-        // 1. Look for __NEXT_DATA__
+
+        // ===================================================================
+        // METHOD 1: Enhanced __NEXT_DATA__ Deep Analysis
+        // ===================================================================
         const nextDataScript = doc.querySelector('#__NEXT_DATA__')
         extractionResults.nextDataFound = !!nextDataScript
         
         if (nextDataScript) {
-          debugLog('EXTRACTION', '__NEXT_DATA__ found', { length: nextDataScript.textContent.length })
+          debugLog('EXTRACTION', 'Enhanced __NEXT_DATA__ analysis starting', { 
+            length: nextDataScript.textContent.length 
+          })
           
           try {
             const nextData = JSON.parse(nextDataScript.textContent)
-            const pageProps = nextData?.props?.pageProps
             
-            if (pageProps) {
-              const checkForVideoUrl = (obj, path = '') => {
-                if (!obj || typeof obj !== 'object') return []
-                
-                const foundUrls = []
-                
-                // Check for video URL properties
-                const videoProps = ['videoUrl', 'contentUrl', 'url', 'src']
-                for (const prop of videoProps) {
-                  if (obj[prop] && typeof obj[prop] === 'string' && obj[prop].includes('.mp4')) {
-                    foundUrls.push({ url: obj[prop], source: `__NEXT_DATA__.${path}.${prop}` })
-                    debugLog('EXTRACTION', 'Video URL found in __NEXT_DATA__', {
-                      url: obj[prop],
-                      path: `${path}.${prop}`
+            // Deep recursive search with enhanced property detection
+            const deepVideoSearch = (obj, path = '', depth = 0) => {
+              if (!obj || typeof obj !== 'object' || depth > 10) return []
+              
+              const foundUrls = []
+              
+              // Enhanced video property patterns
+              const videoProps = [
+                'videoUrl', 'contentUrl', 'url', 'src', 'href',
+                'mediaUrl', 'playbackUrl', 'streamUrl', 'hlsUrl', 'dashUrl',
+                'videoPlaybackUrl', 'directUrl', 'cdnUrl', 'assetUrl',
+                'mp4Url', 'webmUrl', 'videoSrc', 'videoHref', 'playUrl',
+                'media_url', 'video_url', 'stream_url', 'playback_url'
+              ]
+              
+              // Check for video URLs in current object
+              for (const prop of videoProps) {
+                const value = obj[prop]
+                if (value && typeof value === 'string') {
+                  // Enhanced URL validation
+                  if (value.match(/\.(mp4|webm|mov|m4v)(\?.*)?$/i) || 
+                      value.includes('cf-st.sc-cdn.net') ||
+                      value.includes('snap-dev.storage.googleapis.com') ||
+                      value.includes('snapchat.com/') && value.includes('media')) {
+                    
+                    foundUrls.push({ 
+                      url: value, 
+                      source: `__NEXT_DATA__.${path}.${prop}`,
+                      confidence: value.includes('.mp4') ? 'high' : 'medium'
+                    })
+                    
+                    debugLog('EXTRACTION', 'Enhanced video URL found in __NEXT_DATA__', {
+                      url: value,
+                      path: `${path}.${prop}`,
+                      confidence: value.includes('.mp4') ? 'high' : 'medium'
                     })
                   }
                 }
-                
-                // Recursively search nested objects
+              }
+              
+              // Check for base64 encoded content
+              if (typeof obj === 'string' && obj.length > 100 && obj.includes('http')) {
+                try {
+                  const decoded = atob(obj)
+                  if (decoded.includes('.mp4') || decoded.includes('video')) {
+                    debugLog('EXTRACTION', 'Base64 encoded content found', { 
+                      original: obj.substring(0, 50),
+                      decoded: decoded.substring(0, 100)
+                    })
+                  }
+                } catch (e) {
+                  // Not base64, continue
+                }
+              }
+              
+              // Recursively search nested objects and arrays
+              if (Array.isArray(obj)) {
+                obj.forEach((item, index) => {
+                  const nested = deepVideoSearch(item, `${path}[${index}]`, depth + 1)
+                  foundUrls.push(...nested)
+                })
+              } else {
                 for (const key in obj) {
-                  if (key !== 'thumbnail' && key !== 'poster') {
-                    const nested = checkForVideoUrl(obj[key], path ? `${path}.${key}` : key)
+                  if (obj.hasOwnProperty(key) && 
+                      !['thumbnail', 'poster', 'preview', 'icon'].includes(key.toLowerCase())) {
+                    const nested = deepVideoSearch(obj[key], path ? `${path}.${key}` : key, depth + 1)
                     foundUrls.push(...nested)
                   }
                 }
-                
-                return foundUrls
               }
               
-              const videoUrls = checkForVideoUrl(pageProps, 'pageProps')
-              if (videoUrls.length > 0) {
-                debugLog('EXTRACTION', 'Video URLs extracted from __NEXT_DATA__', { 
-                  count: videoUrls.length,
-                  urls: videoUrls
-                })
-                return videoUrls[0].url
-              }
+              return foundUrls
             }
+            
+            const videoUrls = deepVideoSearch(nextData, 'nextData')
+            if (videoUrls.length > 0) {
+              // Sort by confidence and return highest confidence URL
+              const sortedUrls = videoUrls.sort((a, b) => 
+                (b.confidence === 'high' ? 1 : 0) - (a.confidence === 'high' ? 1 : 0)
+              )
+              
+              debugLog('EXTRACTION', 'Enhanced video URLs extracted from __NEXT_DATA__', { 
+                count: videoUrls.length,
+                urls: sortedUrls,
+                selected: sortedUrls[0]
+              })
+              return sortedUrls[0].url
+            }
+            
           } catch (e) {
-            debugLog('EXTRACTION', '__NEXT_DATA__ parse failed', { error: e.message })
+            debugLog('EXTRACTION', 'Enhanced __NEXT_DATA__ parse failed', { error: e.message })
           }
         }
+
+        // ===================================================================
+        // METHOD 2: Advanced DOM Data Attribute Analysis
+        // ===================================================================
+        debugLog('EXTRACTION', 'Starting advanced DOM analysis')
         
-        // 2. Look for video elements
-        const videoElements = doc.querySelectorAll('video')
+        // Check all elements for video-related data attributes
+        const allElements = doc.querySelectorAll('*[data-*]')
+        extractionResults.dataAttributeElements = allElements.length
+        
+        for (const element of allElements) {
+          const attributes = element.attributes
+          for (const attr of attributes) {
+            if (attr.name.startsWith('data-') && attr.value) {
+              const attrName = attr.name.toLowerCase()
+              const attrValue = attr.value
+              
+              // Check for video-related data attributes
+              if ((attrName.includes('video') || 
+                   attrName.includes('media') || 
+                   attrName.includes('src') || 
+                   attrName.includes('url')) &&
+                  (attrValue.includes('.mp4') || 
+                   attrValue.includes('cf-st.sc-cdn.net') ||
+                   attrValue.includes('googleapis.com'))) {
+                
+                debugLog('EXTRACTION', 'Video URL found in data attribute', { 
+                  attribute: attrName,
+                  url: attrValue,
+                  element: element.tagName
+                })
+                return attrValue
+              }
+            }
+          }
+        }
+
+        // ===================================================================
+        // METHOD 3: Enhanced Video Elements with All Attributes
+        // ===================================================================
+        const videoElements = doc.querySelectorAll('video, source')
         extractionResults.videoElementsFound = videoElements.length
         
-        debugLog('EXTRACTION', 'Video elements scan', { count: videoElements.length })
+        debugLog('EXTRACTION', 'Enhanced video elements analysis', { count: videoElements.length })
         
-        for (const video of videoElements) {
-          if (video.src && video.src.includes('.mp4')) {
-            debugLog('EXTRACTION', 'Video element with MP4 src found', { src: video.src })
-            return video.src
-          }
+        for (const element of videoElements) {
+          // Check all possible src attributes
+          const srcAttributes = ['src', 'data-src', 'data-video-src', 'data-url', 'data-media-url']
           
-          const sources = video.querySelectorAll('source')
-          for (const source of sources) {
-            if (source.src && source.src.includes('.mp4')) {
-              debugLog('EXTRACTION', 'Video source element found', { src: source.src })
-              return source.src
+          for (const attr of srcAttributes) {
+            const value = element.getAttribute(attr)
+            if (value && (value.includes('.mp4') || 
+                         value.includes('cf-st.sc-cdn.net') ||
+                         value.includes('googleapis.com'))) {
+              debugLog('EXTRACTION', 'Video source found in element attribute', { 
+                attribute: attr,
+                src: value,
+                element: element.tagName
+              })
+              return value
             }
           }
         }
+
+        // ===================================================================
+        // METHOD 4: CSS Background Analysis for Video Posters
+        // ===================================================================
+        debugLog('EXTRACTION', 'Starting CSS background analysis')
         
-        // 3. Look for JSON-LD structured data
-        const scripts = doc.querySelectorAll('script[type="application/ld+json"]')
-        extractionResults.jsonLdScripts = scripts.length
-        
-        debugLog('EXTRACTION', 'JSON-LD scripts scan', { count: scripts.length })
-        
-        for (const script of scripts) {
-          try {
-            const data = JSON.parse(script.textContent)
-            
-            const extractVideoFromLD = (obj) => {
-              if (!obj) return null
+        const elementsWithBackground = doc.querySelectorAll('*[style*="background"]')
+        for (const element of elementsWithBackground) {
+          const style = element.getAttribute('style') || ''
+          const backgroundMatch = style.match(/background[^:]*:\s*url\(['"]?([^'"]+)['"]?\)/)
+          
+          if (backgroundMatch && backgroundMatch[1]) {
+            const bgUrl = backgroundMatch[1]
+            // If background shows a poster, try to derive video URL
+            if (bgUrl.includes('poster') || bgUrl.includes('thumb')) {
+              const videoUrl = bgUrl.replace(/poster|thumb/g, 'video').replace(/\.(jpg|jpeg|png|webp)$/i, '.mp4')
               
-              if (obj['@type'] === 'VideoObject') {
-                if (obj.contentUrl && obj.contentUrl.includes('.mp4')) {
-                  debugLog('EXTRACTION', 'Video URL found in JSON-LD', { 
-                    url: obj.contentUrl,
-                    type: 'VideoObject.contentUrl'
-                  })
-                  return obj.contentUrl
+              debugLog('EXTRACTION', 'Potential video URL derived from background poster', {
+                posterUrl: bgUrl,
+                derivedVideoUrl: videoUrl
+              })
+              
+              // Validate derived URL
+              try {
+                const testResponse = await fetch(videoUrl.replace('https://www.snapchat.com', '/snap'), { method: 'HEAD' })
+                if (testResponse.ok) {
+                  return videoUrl
                 }
-                if (obj.url && obj.url.includes('.mp4')) {
-                  debugLog('EXTRACTION', 'Video URL found in JSON-LD', { 
-                    url: obj.url,
-                    type: 'VideoObject.url'
-                  })
-                  return obj.url
-                }
+              } catch (e) {
+                // Continue with other methods
               }
-              
-              if (Array.isArray(obj)) {
-                for (const item of obj) {
-                  const result = extractVideoFromLD(item)
-                  if (result) return result
-                }
-              }
-              
-              return null
             }
-            
-            const videoUrl = extractVideoFromLD(data)
-            if (videoUrl) return videoUrl
-            
-          } catch (e) {
-            debugLog('EXTRACTION', 'JSON-LD parse failed', { error: e.message })
           }
         }
+
+        // ===================================================================
+        // METHOD 5: Apollo Client State Analysis
+        // ===================================================================
+        debugLog('EXTRACTION', 'Starting Apollo Client state analysis')
         
-        // 4. Look for inline script variables
+        const apolloScripts = doc.querySelectorAll('script:not([src])')
+        for (const script of apolloScripts) {
+          const content = script.textContent || script.innerHTML
+          
+          // Look for Apollo Client cache data
+          if (content.includes('__APOLLO_STATE__') || content.includes('apolloState')) {
+            try {
+              // Extract Apollo state data
+              const apolloMatch = content.match(/"__APOLLO_STATE__":\s*({.*?})/s) ||
+                                 content.match(/apolloState:\s*({.*?})/s)
+              
+              if (apolloMatch) {
+                const apolloData = JSON.parse(apolloMatch[1])
+                debugLog('EXTRACTION', 'Apollo state found', { keys: Object.keys(apolloData) })
+                
+                // Search Apollo cache for video data
+                const apolloVideoSearch = (obj, path = '') => {
+                  if (!obj || typeof obj !== 'object') return null
+                  
+                  for (const key in obj) {
+                    const value = obj[key]
+                    if (typeof value === 'string' && 
+                        (value.includes('.mp4') || 
+                         value.includes('cf-st.sc-cdn.net'))) {
+                      debugLog('EXTRACTION', 'Video URL found in Apollo state', {
+                        path: `${path}.${key}`,
+                        url: value
+                      })
+                      return value
+                    }
+                    
+                    if (typeof value === 'object') {
+                      const nested = apolloVideoSearch(value, `${path}.${key}`)
+                      if (nested) return nested
+                    }
+                  }
+                  return null
+                }
+                
+                const apolloVideo = apolloVideoSearch(apolloData, 'apolloState')
+                if (apolloVideo) return apolloVideo
+              }
+            } catch (e) {
+              debugLog('EXTRACTION', 'Apollo state parse failed', { error: e.message })
+            }
+          }
+        }
+
+        // ===================================================================
+        // METHOD 6: Network Request Pattern Reconstruction
+        // ===================================================================
+        debugLog('EXTRACTION', 'Starting network pattern reconstruction')
+        
+        // Extract potential video IDs from URL and reconstruct CDN URLs
+        const urlParts = snapchatUrl.split('/')
+        const spotlightMatch = snapchatUrl.match(/\/spotlight\/([^/?]+)/)
+        
+        if (spotlightMatch) {
+          const videoId = spotlightMatch[1]
+          debugLog('EXTRACTION', 'Video ID extracted from URL', { videoId })
+          
+          // Try common Snapchat CDN patterns
+          const cdnPatterns = [
+            `https://cf-st.sc-cdn.net/d/${videoId}.mp4`,
+            `https://cf-st.sc-cdn.net/d/${videoId}_720.mp4`,
+            `https://cf-st.sc-cdn.net/d/${videoId}_1080.mp4`,
+            `https://snap-dev.storage.googleapis.com/spotlight/${videoId}.mp4`,
+            `https://snap-dev.storage.googleapis.com/spotlight/${videoId}/video.mp4`
+          ]
+          
+          for (const pattern of cdnPatterns) {
+            try {
+              debugLog('EXTRACTION', 'Testing CDN pattern', { pattern })
+              const testUrl = pattern.replace('https://cf-st.sc-cdn.net', '/snap').replace('https://snap-dev.storage.googleapis.com', '/snap')
+              const testResponse = await fetch(testUrl, { method: 'HEAD' })
+              
+              if (testResponse.ok && testResponse.headers.get('content-type')?.includes('video')) {
+                debugLog('EXTRACTION', 'CDN pattern match found', { 
+                  pattern,
+                  contentType: testResponse.headers.get('content-type')
+                })
+                return pattern
+              }
+            } catch (e) {
+              // Continue with next pattern
+            }
+          }
+        }
+
+        // ===================================================================
+        // METHOD 7: Enhanced Script Analysis with Obfuscation Handling
+        // ===================================================================
         const allScripts = doc.querySelectorAll('script:not([type]), script[type="text/javascript"]')
-        debugLog('EXTRACTION', 'Inline scripts scan', { count: allScripts.length })
+        debugLog('EXTRACTION', 'Enhanced script analysis', { count: allScripts.length })
         
         for (const script of allScripts) {
           const content = script.textContent || script.innerHTML
-          const videoUrlRegex = /"(https?:\/\/[^"]*\.mp4[^"]*)"/g
-          let match
           
-          while ((match = videoUrlRegex.exec(content)) !== null) {
-            const url = match[1]
-            if (!url.includes('thumb') && !url.includes('poster') && !url.match(/\d+x\d+/)) {
-              debugLog('EXTRACTION', 'Video URL found in inline script', { url })
-              return url
+          // Multiple regex patterns for video URLs
+          const videoPatterns = [
+            /"(https?:\/\/[^"]*\.mp4[^"]*)"/g,
+            /'(https?:\/\/[^']*\.mp4[^']*)'/g,
+            /url:\s*["']([^"']*\.mp4[^"']*)['"]/g,
+            /src:\s*["']([^"']*\.mp4[^"']*)['"]/g,
+            /videoUrl:\s*["']([^"']*\.mp4[^"']*)['"]/g,
+            /"(https?:\/\/cf-st\.sc-cdn\.net[^"]*)"/g,
+            /"(https?:\/\/[^"]*googleapis\.com[^"]*\.mp4[^"]*)"/g
+          ]
+          
+          for (const pattern of videoPatterns) {
+            let match
+            while ((match = pattern.exec(content)) !== null) {
+              const url = match[1]
+              if (!url.includes('thumb') && 
+                  !url.includes('poster') && 
+                  !url.includes('preview') &&
+                  !url.match(/\d+x\d+/) &&
+                  url.length > 20) {
+                
+                debugLog('EXTRACTION', 'Enhanced video URL found in script', { 
+                  url,
+                  pattern: pattern.source
+                })
+                return url
+              }
+            }
+          }
+          
+          // Look for obfuscated or encoded URLs
+          if (content.length > 1000) {
+            // Check for hex-encoded URLs
+            const hexMatches = content.match(/[0-9a-f]{32,}/g)
+            if (hexMatches) {
+              for (const hex of hexMatches.slice(0, 5)) { // Limit to prevent performance issues
+                try {
+                  // Convert hex to text in browser environment
+                  let decoded = ''
+                  for (let i = 0; i < hex.length; i += 2) {
+                    decoded += String.fromCharCode(parseInt(hex.substr(i, 2), 16))
+                  }
+                  if (decoded.includes('.mp4') || decoded.includes('video')) {
+                    debugLog('EXTRACTION', 'Potential hex-encoded video data found', {
+                      hex: hex.substring(0, 20),
+                      decoded: decoded.substring(0, 100)
+                    })
+                  }
+                } catch (e) {
+                  // Continue
+                }
+              }
             }
           }
         }
+
+        // ===================================================================
+        // METHOD 8: Manifest File Analysis
+        // ===================================================================
+        debugLog('EXTRACTION', 'Starting manifest file analysis')
         
-        // Update extraction results
+        // Look for HLS or DASH manifests
+        const manifestPatterns = [
+          /["'](https?:\/\/[^"']*\.m3u8[^"']*)['"]/g,
+          /["'](https?:\/\/[^"']*\.mpd[^"']*)['"]/g
+        ]
+        
+        for (const script of allScripts) {
+          const content = script.textContent || script.innerHTML
+          
+          for (const pattern of manifestPatterns) {
+            let match
+            while ((match = pattern.exec(content)) !== null) {
+              const manifestUrl = match[1]
+              debugLog('EXTRACTION', 'Manifest file found', { manifestUrl })
+              
+              try {
+                const manifestResponse = await fetch(manifestUrl.replace('https://www.snapchat.com', '/snap'))
+                if (manifestResponse.ok) {
+                  const manifestContent = await manifestResponse.text()
+                  
+                  // Parse manifest for video segments
+                  if (manifestUrl.includes('.m3u8')) {
+                    const videoSegments = manifestContent.match(/https?:\/\/[^\s]+\.ts/g)
+                    if (videoSegments && videoSegments.length > 0) {
+                      const baseUrl = manifestUrl.substring(0, manifestUrl.lastIndexOf('/'))
+                      const firstSegment = videoSegments[0]
+                      const reconstructedUrl = firstSegment.startsWith('http') ? firstSegment : `${baseUrl}/${firstSegment}`
+                      
+                      debugLog('EXTRACTION', 'HLS video segments found', {
+                        manifestUrl,
+                        segmentCount: videoSegments.length,
+                        firstSegment: reconstructedUrl
+                      })
+                      return reconstructedUrl
+                    }
+                  }
+                }
+              } catch (e) {
+                debugLog('EXTRACTION', 'Manifest fetch failed', { 
+                  manifestUrl,
+                  error: e.message 
+                })
+              }
+            }
+          }
+        }
+
+        // Update extraction results with enhanced data
         setDebugState(prev => ({
           ...prev,
-          extraction: { ...prev.extraction, ...extractionResults }
+          extraction: { 
+            ...prev.extraction, 
+            ...extractionResults,
+            enhancedMethodsUsed: 8,
+            dataAttributeElements: extractionResults.dataAttributeElements || 0
+          }
         }))
         
-        debugLog('EXTRACTION', 'All methods exhausted', { 
+        debugLog('EXTRACTION', 'All enhanced methods exhausted', { 
           result: 'FAIL',
-          summary: extractionResults
+          summary: extractionResults,
+          methodsUsed: 8
         })
         
         return null
         
       } catch (error) {
-        debugLog('EXTRACTION', 'Extraction failed', { 
+        debugLog('EXTRACTION', 'Enhanced extraction failed', { 
           error: error.message,
           result: 'ERROR'
         })
@@ -513,13 +802,65 @@ export default function ContentModal({ item, isOpen, onClose }) {
   }
 
   useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        onClose()
-      } else if (event.key === ' ' || event.key === 'Spacebar') {
-        // Space bar to play/pause video
+    const handleKeyDown = (event) => {
+      // Prevent default behavior for media keys
+      if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.code)) {
         event.preventDefault()
-        handleVideoClick()
+      }
+      
+      switch (event.code) {
+        case 'Escape':
+          onClose()
+          break
+        case 'Space':
+          // Space bar to play/pause video
+          handleVideoClick()
+          break
+        case 'ArrowLeft':
+          // Skip backward 10 seconds
+          if (videoRef.current) {
+            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10)
+          }
+          break
+        case 'ArrowRight':
+          // Skip forward 10 seconds
+          if (videoRef.current) {
+            videoRef.current.currentTime = Math.min(
+              videoRef.current.duration || 0, 
+              videoRef.current.currentTime + 10
+            )
+          }
+          break
+        case 'ArrowUp':
+          // Volume up
+          if (videoRef.current) {
+            videoRef.current.volume = Math.min(1, videoRef.current.volume + 0.1)
+          }
+          break
+        case 'ArrowDown':
+          // Volume down
+          if (videoRef.current) {
+            videoRef.current.volume = Math.max(0, videoRef.current.volume - 0.1)
+          }
+          break
+        case 'KeyM':
+          // Mute/unmute
+          if (videoRef.current) {
+            videoRef.current.muted = !videoRef.current.muted
+          }
+          break
+        case 'KeyF':
+          // Toggle fullscreen
+          if (videoRef.current) {
+            if (document.fullscreenElement) {
+              document.exitFullscreen()
+            } else {
+              videoRef.current.requestFullscreen()
+            }
+          }
+          break
+        default:
+          break
       }
     }
 
@@ -528,7 +869,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
     }
 
     if (isOpen) {
-      document.addEventListener('keydown', handleEscape)
+      document.addEventListener('keydown', handleKeyDown)
       window.addEventListener('popstate', handlePopstate)
       
       // Add URL state for bookmarking (like real Snapchat)
@@ -545,7 +886,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
     }
 
     return () => {
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('popstate', handlePopstate)
       document.body.style.overflow = 'unset'
     }
@@ -611,15 +952,17 @@ export default function ContentModal({ item, isOpen, onClose }) {
           <div>Video URL: {videoUrl ? '✅' : '❌'}</div>
         </div>
         
-        {/* Extraction Stats */}
+        {/* Enhanced Extraction Stats */}
         <div style={{ marginBottom: '10px' }}>
-          <div style={{ color: '#4ecdc4', fontWeight: 'bold' }}>EXTRACTION:</div>
+          <div style={{ color: '#4ecdc4', fontWeight: 'bold' }}>ENHANCED EXTRACTION:</div>
           <div>Attempts: {debugState.extraction.attempts}</div>
           <div>Snapchat URL: {debugState.extraction.snapchatUrl ? '✅' : '❌'}</div>
           <div>Proxy Response: {debugState.extraction.proxyResponse?.status || 'N/A'}</div>
           <div>HTML Length: {debugState.extraction.htmlLength || 0}</div>
+          <div>Methods Used: {debugState.extraction.enhancedMethodsUsed || 'Legacy'}</div>
           <div>__NEXT_DATA__: {debugState.extraction.nextDataFound ? '✅' : '❌'}</div>
           <div>Video Elements: {debugState.extraction.videoElementsFound || 0}</div>
+          <div>Data Attributes: {debugState.extraction.dataAttributeElements || 0}</div>
           <div>JSON-LD Scripts: {debugState.extraction.jsonLdScripts || 0}</div>
           <div>Errors: {debugState.extraction.errors.length}</div>
         </div>
@@ -770,41 +1113,62 @@ export default function ContentModal({ item, isOpen, onClose }) {
       }
     }
 
-    // For video/story content - render video modal like real Snapchat
+    // For video/story content - render video modal like real Snapchat with enhanced layout
     return (
       <div className="modal-content spotlight-modal">
-        <div className="modal-header">
+        {/* Sticky Header */}
+        <header className="modal-header-sticky">
           <div className="modal-user-info">
-            <h3>{item.user}</h3>
-            {item.views && <span className="view-count">👁 {item.views}</span>}
+            <div className="user-avatar">
+              <img src={item.avatar || '/default-avatar.png'} alt={item.user} />
+            </div>
+            <div className="user-details">
+              <h3>{item.user}</h3>
+              {item.views && <span className="view-count">👁 {item.views}</span>}
+            </div>
           </div>
           <button className="close-button" onClick={onClose} aria-label="Close">✕</button>
-        </div>
+        </header>
         
-        <div className="modal-video-container">
-          {item.thumbnail && renderVideoContent()}
-        </div>
-        
-        {item.description && (
-          <div className="modal-description">
-            <p>{item.description}</p>
+        {/* Main Content Area */}
+        <main className="modal-content-area">
+          <div className="video-main">
+            {item.thumbnail && renderVideoContent()}
           </div>
-        )}
+          
+          {/* Content Sidebar for Desktop */}
+          <aside className="content-sidebar">
+            {item.description && (
+              <div className="modal-description">
+                <p>{item.description}</p>
+              </div>
+            )}
+            
+            <div className="modal-stats">
+              {item.views && <span>👁 {item.views}</span>}
+              {item.comments && <span>💬 {item.comments}</span>}
+              {item.shares && <span>🔄 {item.shares}</span>}
+            </div>
+          </aside>
+        </main>
         
-        <div className="modal-stats">
-          {item.views && <span>👁 {item.views}</span>}
-          {item.comments && <span>💬 {item.comments}</span>}
-          {item.shares && <span>🔄 {item.shares}</span>}
-        </div>
-        
-        <div className="modal-actions">
-          <button className="action-btn primary">
-            {item.isStory ? 'View on Snapchat' : 'Watch on Snapchat'}
-          </button>
-          <button className="action-btn secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
+        {/* Bottom Action Bar */}
+        <footer className="modal-actions-bar">
+          <div className="stats-display">
+            {item.views && <span>👁 {item.views}</span>}
+            {item.comments && <span>💬 {item.comments}</span>}
+            {item.shares && <span>🔄 {item.shares}</span>}
+          </div>
+          
+          <div className="action-buttons">
+            <button className="action-btn primary">
+              {item.isStory ? 'View on Snapchat' : 'Watch on Snapchat'}
+            </button>
+            <button className="action-btn secondary" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </footer>
       </div>
     )
   }
