@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
+import ContentModal from './ContentModal'
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -14,47 +15,45 @@ export default function Tabs({ username }) {
   const [activeTab, setActiveTab] = useState('spotlight') // Default to spotlight which has most content
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [activeContent, setActiveContent] = useState(null)
   const tabRefs = useRef({})
   const requestIdRef = useRef(0)
 
-  // Handle tile activation (click/keyboard) - matches real Snapchat navigation behavior
+  // Handle tile activation (click/keyboard) - opens modal like real Snapchat
   const handleTileActivate = useCallback((item) => {
     if (import.meta.env.DEV) {
       console.log('Tile activated:', item)
     }
     
-    // Validate item and URL before navigation
-    if (!item || !item.url) {
-      console.warn('No URL available for this item:', item)
+    if (!item) {
+      console.warn('No item provided')
       return
     }
 
-    try {
-      if (item.isProfile) {
-        // For profile links, navigate within our app
-        const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
-        if (username) {
-          window.location.href = `/?username=${username}`
-        } else {
-          console.warn('Could not extract username from profile URL:', item.url)
-        }
+    if (item.isProfile) {
+      // For profile links, navigate within our app
+      const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
+      if (username) {
+        window.location.href = `/?username=${username}`
       } else {
-        // For content links (Spotlight videos, Stories, etc.), open the real Snapchat URLs
-        // This matches real Snapchat's full page navigation behavior
-        if (import.meta.env.DEV) {
-          console.log('Navigating to real Snapchat URL:', item.url)
-        }
-        
-        // Use full page navigation like real Snapchat (not client-side routing)
-        window.location.href = item.url
+        console.warn('Could not extract username from profile URL:', item.url)
       }
-    } catch (error) {
-      console.error('Navigation error:', error)
-      // Fallback: try to navigate anyway if URL looks valid
-      if (item.url.startsWith('https://')) {
-        window.location.href = item.url
-      }
+    } else {
+      // For content (Spotlight videos, Stories), open in modal like real Snapchat
+      setActiveContent(item)
+      setShowModal(true)
     }
+  }, [])
+
+  const handleCloseModal = useCallback(() => {
+    setShowModal(false)
+    setActiveContent(null)
+    
+    // Remove hash from URL
+    const currentUrl = new URL(window.location)
+    currentUrl.hash = ''
+    window.history.replaceState(null, '', currentUrl)
   }, [])
 
   const checkAllTabsForContentCallback = useCallback(() => {
@@ -916,6 +915,13 @@ export default function Tabs({ username }) {
           </article>
         ))}
       </div>
+      
+      {/* Content Modal */}
+      <ContentModal 
+        item={activeContent}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+      />
     </div>
   )
 }

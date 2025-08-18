@@ -5,30 +5,40 @@
   box-sizing: border-box;
 }
 
-/* Modal Styles */
+/* Modal Styles - Snapchat-like */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+}
+
+.spotlight-overlay {
+  background-color: rgba(0, 0, 0, 0.98);
 }
 
 .modal-container {
-  background-color: #ffffff;
-  border-radius: 12px;
-  max-width: 500px;
-  max-height: 80vh;
-  width: 90%;
+  background-color: #000000;
+  border-radius: 16px;
+  max-width: 400px;
+  max-height: 90vh;
+  width: 95%;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  animation: modalSlideIn 0.3s ease-out;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  animation: modalSlideIn 0.25s ease-out;
+  color: white;
+}
+
+.spotlight-container {
+  max-width: 500px;
+  background-color: #000000;
 }
 
 @keyframes modalSlideIn {
@@ -139,6 +149,136 @@
 
 .action-btn.secondary:hover {
   background-color: #f5f5f5;
+}
+
+/* Spotlight Modal Specific Styles */
+.spotlight-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.modal-user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal-user-info h3 {
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.view-count {
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.modal-video-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9/16;
+  background: #000;
+  overflow: hidden;
+}
+
+.video-placeholder {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.modal-video-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.play-overlay:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.play-button {
+  font-size: 2rem;
+  color: white;
+  margin-left: 5px;
+}
+
+.modal-description {
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.modal-description p {
+  margin: 0;
+  color: white;
+  line-height: 1.4;
+}
+
+.modal-stats {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #ccc;
+  border-bottom: 1px solid #333;
+}
+
+.modal-actions {
+  padding: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-actions .action-btn {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-actions .action-btn.primary {
+  background: #fffc00;
+  color: #000;
+  border: none;
+}
+
+.modal-actions .action-btn.primary:hover {
+  background: #e6e300;
+}
+
+.modal-actions .action-btn.secondary {
+  background: transparent;
+  color: white;
+  border: 1px solid #555;
+}
+
+.modal-actions .action-btn.secondary:hover {
+  background: #333;
 }
 
 body {

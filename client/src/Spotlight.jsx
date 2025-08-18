@@ -1,14 +1,22 @@
+import { useState } from 'react'
 import './App.css'
+import ContentModal from './ContentModal'
 
 export default function Spotlight({ items }) {
+  const [showModal, setShowModal] = useState(false)
+  const [activeContent, setActiveContent] = useState(null)
+  
   if (!items) return null
   if (items.length === 0) return <p>No Spotlight results.</p>
   
   const handleItemClick = (item) => {
-    if (item.url) {
-      // Navigate directly like real Snapchat
-      window.location.href = item.url
-    }
+    setActiveContent(item)
+    setShowModal(true)
+  }
+  
+  const handleCloseModal = () => {
+    setShowModal(false)
+    setActiveContent(null)
   }
   
   return (
@@ -25,6 +33,13 @@ export default function Spotlight({ items }) {
           {item.description && <p className="spotlight-desc">{item.description}</p>}
         </div>
       ))}
+      
+      {/* Content Modal */}
+      <ContentModal 
+        item={activeContent}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+      />
     </div>
   )
 }
