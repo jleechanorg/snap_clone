@@ -230,12 +230,33 @@ export default function Tabs({ username }) {
         case 'lenses':
           url = `/snap/@${username}?locale=en-US&tab=Lenses`
           selector = 'a[href*="/unlock/"]' // Lenses are unlock links
-          dataMapper = (tile) => ({
-            thumbnail: tile.querySelector('img')?.src,
-            user: username, // Lenses are created by the profile owner
-            description: tile.querySelector('p')?.textContent,
-            url: tile.href || null
-          })
+          dataMapper = (tile) => {
+            // Get the lens unlock URL
+            let lensUrl = tile.href || null
+            
+            // Ensure it's an absolute URL
+            if (lensUrl && !lensUrl.startsWith('http')) {
+              lensUrl = `https://www.snapchat.com${lensUrl}`
+            }
+            
+            // Extract description from various possible elements
+            const description = tile.querySelector('p')?.textContent?.trim() ||
+                              tile.querySelector('span')?.textContent?.trim() ||
+                              tile.getAttribute('aria-label') ||
+                              tile.textContent?.trim() ||
+                              'Lens'
+            
+            // Get thumbnail image
+            const img = tile.querySelector('img')
+            const thumbnail = img?.src || img?.getAttribute('data-src') || img?.getAttribute('data-lazy')
+            
+            return {
+              thumbnail: thumbnail,
+              user: username, // Lenses are created by the profile owner
+              description: description,
+              url: lensUrl
+            }
+          }
           break
         case 'tagged':
           url = `/snap/@${username}?locale=en-US&tab=Tagged`
