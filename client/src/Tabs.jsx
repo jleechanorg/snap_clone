@@ -11,7 +11,7 @@ const LoadingSpinner = ({ tabType }) => (
 
 export default function Tabs({ username }) {
   const [items, setItems] = useState([])
-  const [activeTab, setActiveTab] = useState('stories') // Default to stories first like real Snapchat
+  const [activeTab, setActiveTab] = useState('spotlight') // Default to spotlight which has most content
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
   const tabRefs = useRef({})
@@ -138,17 +138,46 @@ export default function Tabs({ username }) {
           break
         case 'spotlight':
           url = `/snap/@${username}?locale=en-US&tab=Spotlight`
-          selector = 'a[href*="/spotlight/"]' // Links to individual spotlight videos  
-          dataMapper = (tile) => {
-            const linkText = tile.textContent?.trim() || ''
+          // Use broader selectors and JSON-LD data for better content capture
+          selector = 'script[type="application/ld+json"], a[href*="/spotlight/"], div[class*="SpotlightResultTile"], div[class*="tile"], article, .video-tile'
+          dataMapper = (element) => {
+            // Try JSON-LD structured data first (most reliable)
+            if (element.tagName === 'SCRIPT') {
+              try {
+                const data = JSON.parse(element.textContent)
+                if (data['@type'] === 'VideoObject') {
+                  return {
+                    thumbnail: data.thumbnailUrl,
+                    user: data.creator?.alternateName || data.creator?.name || username,
+                    description: data.name || data.description,
+                    views: data.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
+                    comments: null,
+                    shares: null
+                  }
+                }
+                return null
+              } catch {
+                return null
+              }
+            }
+            
+            // Fallback to DOM parsing with improved selectors
+            const linkText = element.textContent?.trim() || ''
             const numbers = linkText.match(/\d+[kK]?/g) || []
             const [views, comments, shares] = numbers.slice(0, 3)
             
-            const user = tile.href?.match(/@([^/]+)/)?.[1]
-            const description = linkText.replace(/\d+[kK]?\s*/g, '').trim()
+            // Look for images in various possible locations
+            const img = element.querySelector('img') || 
+                       element.closest('div')?.querySelector('img') ||
+                       element.parentElement?.querySelector('img')
+            
+            const user = element.href?.match(/@([^/]+)/)?.[1] || username
+            const description = linkText.replace(/\d+[kK]?\s*/g, '').trim() || 
+                              element.getAttribute('aria-label') ||
+                              element.querySelector('p, span, div')?.textContent?.trim()
             
             return {
-              thumbnail: tile.querySelector('img')?.src,
+              thumbnail: img?.src || img?.getAttribute('data-src') || img?.getAttribute('data-lazy'),
               user: user,
               description: description,
               views: views,
@@ -312,13 +341,22 @@ export default function Tabs({ username }) {
           return !!(item.user && item.description)
         }
         
-        // For content tiles, require both thumbnail and user name 
+        // For content tiles, be more lenient - allow items with user OR description
         if (!item.isProfile && !item.isStory) {
-          return !!(item.thumbnail && item.user)
+          return !!(item.user || item.description)
         }
         
         return true
       })
+      
+      // Debug logging for development
+      if (import.meta.env.DEV) {
+        console.log(`${tab} tab debug:`, {
+          elementsFound: elements.length,
+          validItemsAfterMapping: data.length,
+          sampleItems: data.slice(0, 3)
+        })
+      }
       
       // For Tagged tab, filter out entries that are from the profile owner to show diverse users
       if (tab === 'tagged') {
