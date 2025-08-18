@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
-import ContentModal from './ContentModal'
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -15,8 +14,6 @@ export default function Tabs({ username }) {
   const [activeTab, setActiveTab] = useState('spotlight') // Default to spotlight which has most content
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [activeContent, setActiveContent] = useState(null)
   const tabRefs = useRef({})
   const requestIdRef = useRef(0)
 
@@ -26,19 +23,21 @@ export default function Tabs({ username }) {
       console.log('Tile activated:', item)
     }
     
-    // Open content in modal overlay like real Snapchat
-    setActiveContent(item)
-    setShowModal(true)
-  }, [])
-
-  const handleCloseModal = useCallback(() => {
-    setShowModal(false)
-    setActiveContent(null)
-    
-    // Remove content parameter from URL
-    const currentUrl = new URL(window.location)
-    currentUrl.searchParams.delete('content')
-    window.history.replaceState(null, '', currentUrl)
+    // Navigate directly like real Snapchat
+    if (item.url) {
+      if (item.isProfile) {
+        // For profile links, navigate within our app
+        const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
+        if (username) {
+          window.location.href = `/?username=${username}`
+        }
+      } else {
+        // For content links, open the real Snapchat URLs
+        window.location.href = item.url
+      }
+    } else {
+      console.warn('No URL available for this item:', item)
+    }
   }, [])
 
   const checkAllTabsForContentCallback = useCallback(() => {
@@ -854,13 +853,6 @@ export default function Tabs({ username }) {
           </article>
         ))}
       </div>
-      
-      {/* Content Modal */}
-      <ContentModal 
-        item={activeContent}
-        isOpen={showModal}
-        onClose={handleCloseModal}
-      />
     </div>
   )
 }
