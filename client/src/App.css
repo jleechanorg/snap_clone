@@ -445,12 +445,26 @@ body {
   padding: 1rem;
 }
 
+/* Snapchat SpotlightTile overlay content wrapper */
+.spotlight-tile-overlay-content-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(transparent 60%, rgba(0, 0, 0, 0.1) 100%);
+  border-radius: 8px;
+}
+
 /* Snapchat-style overlay for video tiles */
 .tile-overlay {
   position: absolute;
   bottom: 8px;
   right: 8px;
   z-index: 2;
+  pointer-events: auto;
 }
 
 .view-count {

@@ -798,14 +798,16 @@ export default function Tabs({ username }) {
                 height={item.isProfile ? "60" : "200"}
               />
             )}
-            {/* Snapchat-style minimal overlay - only for non-profile tiles */}
+            {/* Snapchat-style overlay content wrapper - only for non-profile tiles */}
             {!item.isProfile && (
-              <div className="tile-overlay">
-                {item.views && (
-                  <div className="view-count">
-                    👁 {item.views}
-                  </div>
-                )}
+              <div className="spotlight-tile-overlay-content-wrapper">
+                <div className="tile-overlay">
+                  {item.views && (
+                    <div className="view-count">
+                      👁 {item.views}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             
