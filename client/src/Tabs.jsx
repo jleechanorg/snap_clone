@@ -50,7 +50,10 @@ export default function Tabs({ username }) {
           }
           
           // Only update if we found different tabs than default
-          if (tabsWithContent.size !== staticTabs.length) {
+          if (
+            !staticTabs.every(tab => tabsWithContent.has(tab)) ||
+            tabsWithContent.size !== staticTabs.length
+          ) {
             setAvailableTabs(tabsWithContent)
           }
         } catch (error) {
@@ -61,15 +64,14 @@ export default function Tabs({ username }) {
         }
       }, { timeout: 5000 })
     }
-  }, [username])
+  }, [username]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTabContentCallback = useCallback(async (tab) => {
     const reqId = ++requestIdRef.current
     // Show loading state immediately for user feedback
     setLoading(true)
     
-    // For non-active tab prefetching, use idle time. For active tab, load immediately.
-    const isActiveTabLoad = tab === activeTab
+    // Note: Active tab loads immediately, background tabs can be deferred
     
     try {
       let url, selector, dataMapper
@@ -424,17 +426,8 @@ export default function Tabs({ username }) {
   useEffect(() => {
     if (!username || !availableTabs.has(activeTab)) return
     
-    // Defer even active tab content loading to avoid blocking critical rendering path
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => {
-        fetchTabContentCallback(activeTab)
-      }, { timeout: 2000 })
-    } else {
-      // Fallback for browsers without requestIdleCallback
-      setTimeout(() => {
-        fetchTabContentCallback(activeTab)
-      }, 100)
-    }
+    // Load active tab content immediately for responsiveness
+    fetchTabContentCallback(activeTab)
   }, [username, activeTab, availableTabs, fetchTabContentCallback])
 
   async function parseTabsFromRealPage() {

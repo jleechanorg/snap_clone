@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -52,7 +53,7 @@ export default defineConfig({
   // Ensure proper file resolution and MIME types
   resolve: {
     alias: {
-      '@': new URL('./src', import.meta.url).pathname
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     },
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
   },
@@ -99,6 +100,6 @@ export default defineConfig({
   },
   // Define environment for proper JSX handling
   define: {
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+    'process.env.NODE_ENV': JSON.stringify('production')
   }
 })
