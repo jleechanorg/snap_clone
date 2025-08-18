@@ -17,26 +17,43 @@ export default function Tabs({ username }) {
   const tabRefs = useRef({})
   const requestIdRef = useRef(0)
 
-  // Handle tile activation (click/keyboard)
+  // Handle tile activation (click/keyboard) - matches real Snapchat navigation behavior
   const handleTileActivate = useCallback((item) => {
     if (import.meta.env.DEV) {
       console.log('Tile activated:', item)
     }
     
-    // Navigate directly like real Snapchat
-    if (item.url) {
+    // Validate item and URL before navigation
+    if (!item || !item.url) {
+      console.warn('No URL available for this item:', item)
+      return
+    }
+
+    try {
       if (item.isProfile) {
         // For profile links, navigate within our app
         const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
         if (username) {
           window.location.href = `/?username=${username}`
+        } else {
+          console.warn('Could not extract username from profile URL:', item.url)
         }
       } else {
-        // For content links, open the real Snapchat URLs
+        // For content links (Spotlight videos, Stories, etc.), open the real Snapchat URLs
+        // This matches real Snapchat's full page navigation behavior
+        if (import.meta.env.DEV) {
+          console.log('Navigating to real Snapchat URL:', item.url)
+        }
+        
+        // Use full page navigation like real Snapchat (not client-side routing)
         window.location.href = item.url
       }
-    } else {
-      console.warn('No URL available for this item:', item)
+    } catch (error) {
+      console.error('Navigation error:', error)
+      // Fallback: try to navigate anyway if URL looks valid
+      if (item.url.startsWith('https://')) {
+        window.location.href = item.url
+      }
     }
   }, [])
 
@@ -175,6 +192,16 @@ export default function Tabs({ username }) {
                 
                 // Handle single VideoObject
                 if (data['@type'] === 'VideoObject') {
+                  // Debug logging for URL extraction
+                  if (import.meta.env.DEV) {
+                    console.log('VideoObject data:', {
+                      url: data.url,
+                      identifier: data.identifier,
+                      creator: data.creator?.alternateName,
+                      hasUrl: !!data.url
+                    })
+                  }
+                  
                   return {
                     thumbnail: data.thumbnailUrl,
                     user: data.creator?.alternateName || data.creator?.name || username,
@@ -422,6 +449,16 @@ export default function Tabs({ username }) {
         videoArrays.forEach(arrayItem => {
           arrayItem._videoData.forEach(videoObj => {
             if (videoObj['@type'] === 'VideoObject') {
+              // Debug logging for video array URL extraction
+              if (import.meta.env.DEV) {
+                console.log('Video array item:', {
+                  url: videoObj.url,
+                  identifier: videoObj.identifier,
+                  creator: videoObj.creator?.alternateName,
+                  hasUrl: !!videoObj.url
+                })
+              }
+              
               processedVideos.push({
                 thumbnail: videoObj.thumbnailUrl,
                 user: videoObj.creator?.alternateName || videoObj.creator?.name || username,
@@ -444,7 +481,12 @@ export default function Tabs({ username }) {
         console.log(`${tab} tab debug:`, {
           elementsFound: elements.length,
           validItemsAfterMapping: data.length,
-          sampleItems: data.slice(0, 3)
+          sampleItems: data.slice(0, 3),
+          urlsExtracted: data.slice(0, 5).map(item => ({ 
+            description: item.description?.slice(0, 30),
+            url: item.url,
+            hasUrl: !!item.url 
+          }))
         })
       }
       
