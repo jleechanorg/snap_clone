@@ -1504,6 +1504,17 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.action-btn:disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 /* Desktop Layout Enhancements */
 @media (min-width: 1024px) {
   .content-sidebar {

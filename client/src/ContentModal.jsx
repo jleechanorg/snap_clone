@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import './App.css'
+import { createUrlSlug, navigateToProfile, openSnapchatContent } from './utils/urlUtils'
 
 export default function ContentModal({ item, isOpen, onClose }) {
   const [videoLoading, setVideoLoading] = useState(false)
@@ -43,7 +44,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
   })
 
   // Debug logger with structured output
-  const debugLog = (category, action, data = {}) => {
+  const debugLog = useCallback((category, action, data = {}) => {
     const timestamp = new Date().toISOString()
     const logEntry = {
       timestamp,
@@ -68,7 +69,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
     console.groupEnd()
     
     return logEntry
-  }
+  }, [item?.url])
 
   // Video state analyzer
   const analyzeVideoState = () => {
@@ -237,7 +238,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
                       decoded: decoded.substring(0, 100)
                     })
                   }
-                } catch (e) {
+                } catch {
                   // Not base64, continue
                 }
               }
@@ -250,7 +251,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
                 })
               } else {
                 for (const key in obj) {
-                  if (obj.hasOwnProperty(key) && 
+                  if (Object.prototype.hasOwnProperty.call(obj, key) && 
                       !['thumbnail', 'poster', 'preview', 'icon'].includes(key.toLowerCase())) {
                     const nested = deepVideoSearch(obj[key], path ? `${path}.${key}` : key, depth + 1)
                     foundUrls.push(...nested)
@@ -371,7 +372,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
                 if (testResponse.ok) {
                   return videoUrl
                 }
-              } catch (e) {
+              } catch {
                 // Continue with other methods
               }
             }
@@ -437,7 +438,6 @@ export default function ContentModal({ item, isOpen, onClose }) {
         debugLog('EXTRACTION', 'Starting network pattern reconstruction')
         
         // Extract potential video IDs from URL and reconstruct CDN URLs
-        const urlParts = snapchatUrl.split('/')
         const spotlightMatch = snapchatUrl.match(/\/spotlight\/([^/?]+)/)
         
         if (spotlightMatch) {
@@ -466,7 +466,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
                 })
                 return pattern
               }
-            } catch (e) {
+            } catch {
               // Continue with next pattern
             }
           }
@@ -529,7 +529,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
                       decoded: decoded.substring(0, 100)
                     })
                   }
-                } catch (e) {
+                } catch {
                   // Continue
                 }
               }
@@ -876,7 +876,7 @@ export default function ContentModal({ item, isOpen, onClose }) {
       const currentUrl = new URL(window.location)
       if (item?.url) {
         // Extract video ID from Snapchat URL for hash
-        const videoId = item.url.split('/spotlight/')[1] || item.description?.replace(/\s+/g, '-').toLowerCase()
+        const videoId = item.url.split('/spotlight/')[1] || createUrlSlug(item.description)
         currentUrl.hash = `#spotlight/${videoId}`
         window.history.pushState(null, '', currentUrl)
       }
@@ -1105,10 +1105,11 @@ export default function ContentModal({ item, isOpen, onClose }) {
 
   const renderContent = () => {
     if (item.isProfile) {
-      // For profile tiles, redirect to the profile page within our app
+      // For profile tiles, navigate to the profile page within our app (SPA-friendly)
       const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
       if (username) {
-        window.location.href = `/?username=${username}`
+        navigateToProfile(username)
+        onClose() // Close modal after navigation
         return null
       }
     }
@@ -1161,7 +1162,11 @@ export default function ContentModal({ item, isOpen, onClose }) {
           </div>
           
           <div className="action-buttons">
-            <button className="action-btn primary">
+            <button 
+              className="action-btn primary"
+              onClick={() => openSnapchatContent(item.url)}
+              disabled={!item.url}
+            >
               {item.isStory ? 'View on Snapchat' : 'Watch on Snapchat'}
             </button>
             <button className="action-btn secondary" onClick={onClose}>

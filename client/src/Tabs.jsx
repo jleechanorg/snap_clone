@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import ContentModal from './ContentModal'
+import { createUrlSlug, navigateToProfile } from './utils/urlUtils'
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -35,7 +36,7 @@ export default function Tabs({ username }) {
       // For profile links, navigate within our app
       const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
       if (username) {
-        window.location.href = `/?username=${username}`
+        navigateToProfile(username)
       } else {
         console.warn('Could not extract username from profile URL:', item.url)
       }
@@ -166,7 +167,7 @@ export default function Tabs({ username }) {
               storyUrl = element.href
             } else {
               // Generate fallback story URL based on story title
-              const storyId = storyTitle.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 50)
+              const storyId = createUrlSlug(storyTitle)
               storyUrl = `https://www.snapchat.com/@${username}/story/${storyId}`
             }
             
