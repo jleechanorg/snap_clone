@@ -798,36 +798,28 @@ export default function Tabs({ username }) {
                 height={item.isProfile ? "60" : "200"}
               />
             )}
-            <div className="tile-content">
-              {item.user && (
-                <h4 className="tile-user">{item.user}</h4>
-              )}
-              {item.description && (
-                <p className="tile-description">{item.description}</p>
-              )}
-              {(item.views || item.comments || item.shares) && (
-                <div className="tile-stats">
-                  {item.views && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff0050'%3E%3Cpath d='M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z'/%3E%3C/svg%3E" alt="Views" width="16" height="16" />
-                      {item.views}
-                    </span>
-                  )}
-                  {item.comments && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h11c.55 0 1-.45 1-1z'/%3E%3C/svg%3E" alt="Comments" width="16" height="16" />
-                      {item.comments}
-                    </span>
-                  )}
-                  {item.shares && (
-                    <span className="stat-item">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z'/%3E%3C/svg%3E" alt="Shares" width="16" height="16" />
-                      {item.shares}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Snapchat-style minimal overlay - only for non-profile tiles */}
+            {!item.isProfile && (
+              <div className="tile-overlay">
+                {item.views && (
+                  <div className="view-count">
+                    👁 {item.views}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Only show content for profile tiles (Related tab) */}
+            {item.isProfile && (
+              <div className="tile-content">
+                {item.user && (
+                  <h4 className="tile-user">{item.user}</h4>
+                )}
+                {item.description && (
+                  <p className="tile-description">{item.description}</p>
+                )}
+              </div>
+            )}
           </article>
         ))}
       </div>
