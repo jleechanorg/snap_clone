@@ -145,6 +145,8 @@ export default function Tabs({ username }) {
             if (element.tagName === 'SCRIPT') {
               try {
                 const data = JSON.parse(element.textContent)
+                
+                // Handle single VideoObject
                 if (data['@type'] === 'VideoObject') {
                   return {
                     thumbnail: data.thumbnailUrl,
@@ -155,6 +157,13 @@ export default function Tabs({ username }) {
                     shares: null
                   }
                 }
+                
+                // Handle array of VideoObjects (Snapchat's format)
+                if (Array.isArray(data)) {
+                  // Return special marker to indicate this is an array that needs special processing
+                  return { _isVideoArray: true, _videoData: data }
+                }
+                
                 return null
               } catch {
                 return null
@@ -348,6 +357,29 @@ export default function Tabs({ username }) {
         
         return true
       })
+      
+      // Process video arrays from JSON-LD data (Snapchat's format)
+      const videoArrays = data.filter(item => item?._isVideoArray)
+      if (videoArrays.length > 0) {
+        const processedVideos = []
+        videoArrays.forEach(arrayItem => {
+          arrayItem._videoData.forEach(videoObj => {
+            if (videoObj['@type'] === 'VideoObject') {
+              processedVideos.push({
+                thumbnail: videoObj.thumbnailUrl,
+                user: videoObj.creator?.alternateName || videoObj.creator?.name || username,
+                description: videoObj.name || videoObj.description,
+                views: videoObj.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
+                comments: null,
+                shares: null
+              })
+            }
+          })
+        })
+        
+        // Replace array markers with processed videos and remove the markers
+        data = data.filter(item => !item?._isVideoArray).concat(processedVideos)
+      }
       
       // Debug logging for development
       if (import.meta.env.DEV) {
