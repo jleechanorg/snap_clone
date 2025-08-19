@@ -6,7 +6,7 @@ const Tabs = lazy(() => import('./Tabs'))
 
 function App() {
   const params = new URLSearchParams(window.location.search)
-  const username = params.get('username')
+  const [username, setUsername] = useState(params.get('username'))
 
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -87,6 +87,21 @@ function App() {
     return () => {
       abortController.abort()
     }
+  }, [username])
+
+  // Listen for profile navigation events from other components
+  useEffect(() => {
+    const handleProfileNavigation = (event) => {
+      const newUsername = event.detail.username
+      if (newUsername !== username) {
+        setUsername(newUsername)
+        setData(null) // Clear old data
+        setError(null)
+      }
+    }
+
+    window.addEventListener('profile-navigation', handleProfileNavigation)
+    return () => window.removeEventListener('profile-navigation', handleProfileNavigation)
   }, [username])
 
   if (!username) {

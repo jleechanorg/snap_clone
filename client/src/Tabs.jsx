@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
+import ContentModal from './ContentModal'
+import { createUrlSlug, navigateToProfile } from './utils/urlUtils'
 
 // Loading spinner component
 const LoadingSpinner = ({ tabType }) => (
@@ -14,16 +16,45 @@ export default function Tabs({ username }) {
   const [activeTab, setActiveTab] = useState('spotlight') // Default to spotlight which has most content
   const [availableTabs, setAvailableTabs] = useState(new Set(['stories', 'spotlight', 'lenses', 'tagged', 'related']))
   const [loading, setLoading] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [activeContent, setActiveContent] = useState(null)
   const tabRefs = useRef({})
   const requestIdRef = useRef(0)
 
-  // Handle tile activation (click/keyboard)
+  // Handle tile activation (click/keyboard) - opens modal like real Snapchat
   const handleTileActivate = useCallback((item) => {
-    // For now, just log the interaction (could be extended to open modals, navigate, etc.)
     if (import.meta.env.DEV) {
       console.log('Tile activated:', item)
     }
-    // Future: Could implement navigation, modal opening, etc.
+    
+    if (!item) {
+      console.warn('No item provided')
+      return
+    }
+
+    if (item.isProfile) {
+      // For profile links, navigate within our app
+      const username = item.url?.match(/\/add\/([^?]+)/)?.[1]
+      if (username) {
+        navigateToProfile(username)
+      } else {
+        console.warn('Could not extract username from profile URL:', item.url)
+      }
+    } else {
+      // For content (Spotlight videos, Stories), open in modal like real Snapchat
+      setActiveContent(item)
+      setShowModal(true)
+    }
+  }, [])
+
+  const handleCloseModal = useCallback(() => {
+    setShowModal(false)
+    setActiveContent(null)
+    
+    // Remove hash from URL
+    const currentUrl = new URL(window.location)
+    currentUrl.hash = ''
+    window.history.replaceState(null, '', currentUrl)
   }, [])
 
   const checkAllTabsForContentCallback = useCallback(() => {
@@ -130,11 +161,22 @@ export default function Tabs({ username }) {
               thumbnailUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(storyTitle.slice(0, 2))}&background=fffc00&color=000&size=200`
             }
             
+            // Generate story URL
+            let storyUrl = null
+            if (element.tagName === 'A' && element.href) {
+              storyUrl = element.href
+            } else {
+              // Generate fallback story URL based on story title
+              const storyId = createUrlSlug(storyTitle)
+              storyUrl = `https://www.snapchat.com/@${username}/story/${storyId}`
+            }
+            
             return {
               thumbnail: thumbnailUrl,
               user: username,
               description: storyTitle,
-              isStory: true
+              isStory: true,
+              url: storyUrl
             }
           }
           break
@@ -150,13 +192,24 @@ export default function Tabs({ username }) {
                 
                 // Handle single VideoObject
                 if (data['@type'] === 'VideoObject') {
+                  // Debug logging for URL extraction
+                  if (import.meta.env.DEV) {
+                    console.log('VideoObject data:', {
+                      url: data.url,
+                      identifier: data.identifier,
+                      creator: data.creator?.alternateName,
+                      hasUrl: !!data.url
+                    })
+                  }
+                  
                   return {
                     thumbnail: data.thumbnailUrl,
                     user: data.creator?.alternateName || data.creator?.name || username,
                     description: data.name || data.description,
                     views: data.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
                     comments: null,
-                    shares: null
+                    shares: null,
+                    url: data.url || `https://www.snapchat.com/@${data.creator?.alternateName || username}/spotlight/${data.identifier}`
                   }
                 }
                 
@@ -187,24 +240,50 @@ export default function Tabs({ username }) {
                               element.getAttribute('aria-label') ||
                               element.querySelector('p, span, div')?.textContent?.trim()
             
+            // Extract URL from the link element
+            const url = element.href || null
+            
             return {
               thumbnail: img?.src || img?.getAttribute('data-src') || img?.getAttribute('data-lazy'),
               user: user,
               description: description,
               views: views,
               comments: comments, 
-              shares: shares
+              shares: shares,
+              url: url
             }
           }
           break
         case 'lenses':
           url = `/snap/@${username}?locale=en-US&tab=Lenses`
           selector = 'a[href*="/unlock/"]' // Lenses are unlock links
-          dataMapper = (tile) => ({
-            thumbnail: tile.querySelector('img')?.src,
-            user: username, // Lenses are created by the profile owner
-            description: tile.querySelector('p')?.textContent
-          })
+          dataMapper = (tile) => {
+            // Get the lens unlock URL
+            let lensUrl = tile.href || null
+            
+            // Ensure it's an absolute URL
+            if (lensUrl && !lensUrl.startsWith('http')) {
+              lensUrl = `https://www.snapchat.com${lensUrl}`
+            }
+            
+            // Extract description from various possible elements
+            const description = tile.querySelector('p')?.textContent?.trim() ||
+                              tile.querySelector('span')?.textContent?.trim() ||
+                              tile.getAttribute('aria-label') ||
+                              tile.textContent?.trim() ||
+                              'Lens'
+            
+            // Get thumbnail image
+            const img = tile.querySelector('img')
+            const thumbnail = img?.src || img?.getAttribute('data-src') || img?.getAttribute('data-lazy')
+            
+            return {
+              thumbnail: thumbnail,
+              user: username, // Lenses are created by the profile owner
+              description: description,
+              url: lensUrl
+            }
+          }
           break
         case 'tagged':
           url = `/snap/@${username}?locale=en-US&tab=Tagged`
@@ -225,7 +304,8 @@ export default function Tabs({ username }) {
                     description: description,
                     views: null, // JSON-LD doesn't always have view counts
                     comments: null,
-                    shares: null
+                    shares: null,
+                    url: data.url || `https://www.snapchat.com/@${creatorName}/spotlight/${data.identifier}`
                   }
                 }
                 return null
@@ -263,7 +343,8 @@ export default function Tabs({ username }) {
               description: description,
               views: numbers[0],
               comments: numbers[1],
-              shares: numbers[2]
+              shares: numbers[2],
+              url: element.href || null
             }
           }
           break
@@ -314,7 +395,8 @@ export default function Tabs({ username }) {
               thumbnail: thumbnailUrl,
               user: nameElement.textContent.trim(),
               description: paragraphElement?.textContent.trim(),
-              isProfile: true
+              isProfile: true,
+              url: addLink
             }
           }
           break
@@ -367,13 +449,24 @@ export default function Tabs({ username }) {
         videoArrays.forEach(arrayItem => {
           arrayItem._videoData.forEach(videoObj => {
             if (videoObj['@type'] === 'VideoObject') {
+              // Debug logging for video array URL extraction
+              if (import.meta.env.DEV) {
+                console.log('Video array item:', {
+                  url: videoObj.url,
+                  identifier: videoObj.identifier,
+                  creator: videoObj.creator?.alternateName,
+                  hasUrl: !!videoObj.url
+                })
+              }
+              
               processedVideos.push({
                 thumbnail: videoObj.thumbnailUrl,
                 user: videoObj.creator?.alternateName || videoObj.creator?.name || username,
                 description: videoObj.name || videoObj.description,
                 views: videoObj.interactionStatistic?.find(stat => stat['@type'] === 'InteractionCounter')?.userInteractionCount,
                 comments: null,
-                shares: null
+                shares: null,
+                url: videoObj.url || `https://www.snapchat.com/@${videoObj.creator?.alternateName || username}/spotlight/${videoObj.identifier}`
               })
             }
           })
@@ -388,7 +481,12 @@ export default function Tabs({ username }) {
         console.log(`${tab} tab debug:`, {
           elementsFound: elements.length,
           validItemsAfterMapping: data.length,
-          sampleItems: data.slice(0, 3)
+          sampleItems: data.slice(0, 3),
+          urlsExtracted: data.slice(0, 5).map(item => ({ 
+            description: item.description?.slice(0, 30),
+            url: item.url,
+            hasUrl: !!item.url 
+          }))
         })
       }
       
@@ -818,6 +916,13 @@ export default function Tabs({ username }) {
           </article>
         ))}
       </div>
+      
+      {/* Content Modal */}
+      <ContentModal 
+        item={activeContent}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+      />
     </div>
   )
 }
